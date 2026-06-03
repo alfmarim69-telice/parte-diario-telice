@@ -607,6 +607,18 @@
       <div class="row-list" id="listaPersonal"></div>
       <button class="add-btn" onclick="toggleForm('formPersonal')">＋ Añadir persona</button>
       <div class="add-form" id="formPersonal">
+        <!-- Desplegable maestro -->
+        <div class="field col-1" style="margin-bottom:8px;">
+          <label>Persona</label>
+          <select id="p_select" onchange="onPersonaSelect()">
+            <option value="">— Seleccionar de la lista —</option>
+          </select>
+        </div>
+        <!-- Info coste precargado -->
+        <div id="p_coste_info" style="display:none;margin-bottom:8px;font-size:11px;
+             color:var(--accent);background:var(--blue2);padding:6px 10px;
+             border-radius:4px;border-left:2px solid var(--accent);font-family:var(--mono);">
+        </div>
         <div class="field-grid" style="margin-bottom:8px;">
           <div class="field">
             <label>Nº Persona</label>
@@ -666,6 +678,18 @@
       <div class="row-list" id="listaMaquinaria"></div>
       <button class="add-btn" onclick="toggleForm('formMaquinaria')">＋ Añadir equipo</button>
       <div class="add-form" id="formMaquinaria">
+        <!-- Desplegable maestro -->
+        <div class="field col-1" style="margin-bottom:8px;">
+          <label>Equipo / Vehículo</label>
+          <select id="m_select" onchange="onMaqSelect()">
+            <option value="">— Seleccionar de la lista —</option>
+          </select>
+        </div>
+        <!-- Info coste precargado -->
+        <div id="m_coste_info" style="display:none;margin-bottom:8px;font-size:11px;
+             color:var(--accent);background:var(--blue2);padding:6px 10px;
+             border-radius:4px;border-left:2px solid var(--accent);font-family:var(--mono);">
+        </div>
         <div class="field-grid" style="margin-bottom:8px;">
           <div class="field">
             <label>Código / Matrícula</label>
@@ -679,15 +703,10 @@
         <div class="field-grid cols-3" style="margin-bottom:8px;">
           <div class="field">
             <label>Proveedor</label>
-            <select id="m_prov">
-              <option value="Propio">Propio Telice</option>
-              <option value="Alquiler">Alquiler</option>
-              <option value="Afrosan">Afrosan</option>
-              <option value="Subcontrata">Subcontrata</option>
-            </select>
+            <input type="text" id="m_prov" placeholder="Ej: Afrosan">
           </div>
           <div class="field">
-            <label>Horas uso</label>
+            <label>Horas / Días uso</label>
             <input type="number" id="m_horas" min="0" max="24" step="0.5" placeholder="8">
           </div>
           <div class="field">
@@ -731,7 +750,7 @@
           <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:4px;">TASK BC ASOCIADA</div>
           <div id="prod_task_desc" style="font-size:12px;color:var(--accent);background:var(--blue2);padding:6px 10px;border-radius:4px;border-left:2px solid var(--accent);"></div>
         </div>
-        <div class="field-grid cols-3" style="margin-bottom:8px;">
+        <div class="field-grid" style="margin-bottom:8px;">
           <div class="field">
             <label>Cantidad ejecutada</label>
             <input type="number" id="prod_cant" min="0" step="0.01" placeholder="0.00">
@@ -740,9 +759,19 @@
             <label>Unidad</label>
             <input type="text" id="prod_ud" readonly style="color:var(--text3);">
           </div>
+        </div>
+        <div class="field-grid cols-3" style="margin-bottom:8px;">
           <div class="field">
-            <label>Lugar / PK</label>
-            <input type="text" id="prod_lugar" placeholder="Ej: PK 12+450">
+            <label>Lugar</label>
+            <input type="text" id="prod_lugar" placeholder="Ej: Verín">
+          </div>
+          <div class="field">
+            <label>PK inicio</label>
+            <input type="text" id="prod_pk_ini" placeholder="Ej: 12+450">
+          </div>
+          <div class="field">
+            <label>PK final</label>
+            <input type="text" id="prod_pk_fin" placeholder="Ej: 12+680">
           </div>
         </div>
         <div class="add-form-actions">
@@ -774,26 +803,64 @@
       <div class="row-list" id="listaCostes" style="margin-top:12px;"></div>
       <button class="add-btn" onclick="toggleForm('formCostes')">＋ Añadir imputación</button>
       <div class="add-form" id="formCostes">
+        <!-- Task de BC -->
         <div class="field col-1" style="margin-bottom:8px;">
           <label>Task de BC (PROYECTO AGRUPADO)</label>
           <select id="cost_task" onchange="onTaskChange()">
             <option value="">— Seleccionar Task —</option>
           </select>
         </div>
+
+        <!-- Tipo de recurso -->
         <div class="field-grid" style="margin-bottom:8px;">
           <div class="field">
-            <label>% Horas cuadrilla</label>
+            <label>% Horas dedicadas a esta Task</label>
             <input type="number" id="cost_pct" min="1" max="100" step="1" placeholder="Ej: 40">
           </div>
           <div class="field">
             <label>Tipo recurso</label>
-            <select id="cost_tipo">
+            <select id="cost_tipo" onchange="onCostTipoChange()">
               <option value="MOD">MOD — Mano de obra</option>
               <option value="MAQ">MAQ — Maquinaria</option>
               <option value="MOD+MAQ">MOD + MAQ</option>
             </select>
           </div>
         </div>
+
+        <!-- Personal asignado a esta Task -->
+        <div id="cost_personal_block" style="margin-bottom:8px;">
+          <div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;
+               letter-spacing:0.07em;font-family:var(--mono);margin-bottom:5px;">
+               Personal en esta Task</div>
+          <select id="cost_personal" multiple style="width:100%;min-height:80px;
+               background:var(--bg3);border:1px solid var(--border);border-radius:4px;
+               color:var(--text);font-family:var(--font);font-size:12px;padding:4px;">
+          </select>
+          <div style="font-size:10px;color:var(--text3);margin-top:3px;">
+            Mantén pulsado Ctrl / Cmd para seleccionar varios
+          </div>
+        </div>
+
+        <!-- Maquinaria asignada a esta Task -->
+        <div id="cost_maq_block" style="margin-bottom:8px;">
+          <div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;
+               letter-spacing:0.07em;font-family:var(--mono);margin-bottom:5px;">
+               Maquinaria en esta Task</div>
+          <select id="cost_maquinaria" multiple style="width:100%;min-height:60px;
+               background:var(--bg3);border:1px solid var(--border);border-radius:4px;
+               color:var(--text);font-family:var(--font);font-size:12px;padding:4px;">
+          </select>
+          <div style="font-size:10px;color:var(--text3);margin-top:3px;">
+            Mantén pulsado Ctrl / Cmd para seleccionar varios
+          </div>
+        </div>
+
+        <!-- Coste estimado de la imputación -->
+        <div id="cost_preview" style="display:none;margin-bottom:8px;padding:8px 10px;
+             background:var(--green2);border-radius:4px;border-left:2px solid var(--green);
+             font-size:11px;font-family:var(--mono);color:var(--green);">
+        </div>
+
         <div class="field col-1" style="margin-bottom:8px;">
           <label>Observación (opcional)</label>
           <input type="text" id="cost_obs" placeholder="Ej: Trabajo en zona de balasto">
@@ -913,6 +980,39 @@ const TASKS = [{"cod": "1.01", "desc": "ENCARGADOS DE TRABAJOS (TELECOMUNICACION
 
 const PARTIDAS = [{"cod":"US13CYA070","desc":"Entronque de tubos en arqueta o cámara existente","ud":"ud","pu":310.15,"te":"3.01","ts":"","ti":"","to":"","_grupo":"3.01","_tipo_grupo":"EJEC"},{"cod":"US13CAN100","desc":"Mandrilado de canalización existente","ud":"m","pu":1.7,"te":"3.01","ts":"","ti":"","to":"","_grupo":"3.01","_tipo_grupo":"EJEC"},{"cod":"US13CAN001","desc":"Apertura canaleta de hormigón a mano","ud":"m","pu":0.83,"te":"3.01","ts":"","ti":"","to":"","_grupo":"3.01","_tipo_grupo":"EJEC"},{"cod":"US13CAN002","desc":"Apertura canaleta de hormigón a máquina","ud":"m","pu":0.27,"te":"3.01","ts":"","ti":"","to":"","_grupo":"3.01","_tipo_grupo":"EJEC"},{"cod":"US13CAN003","desc":"Limpieza de canaleta de hormigón","ud":"m","pu":0.37,"te":"3.01","ts":"","ti":"","to":"","_grupo":"3.01","_tipo_grupo":"EJEC"},{"cod":"US13CAN005","desc":"Reposición tapas canaleta hormigón","ud":"m","pu":9.45,"te":"3.01","ts":"2.01","ti":"","to":"","_grupo":"3.01","_tipo_grupo":"EJEC"},{"cod":"US13CAN005","desc":"Reposición tapas canaleta hormigón","ud":"m","pu":9.45,"te":"3.01","ts":"2.01","ti":"","to":"","_grupo":"2.01","_tipo_grupo":"SUM"},{"cod":"US13CAN010","desc":"Canaleta de hormigón 400x290 mm","ud":"m","pu":41.98,"te":"3.01","ts":"2.01","ti":"","to":"","_grupo":"3.01","_tipo_grupo":"EJEC"},{"cod":"US13CAN010","desc":"Canaleta de hormigón 400x290 mm","ud":"m","pu":41.98,"te":"3.01","ts":"2.01","ti":"","to":"","_grupo":"2.01","_tipo_grupo":"SUM"},{"cod":"US13CAN008","desc":"Canaleta de hormigón 220x195 mm","ud":"m","pu":27.05,"te":"3.01","ts":"2.01","ti":"","to":"","_grupo":"3.01","_tipo_grupo":"EJEC"},{"cod":"US13CAN008","desc":"Canaleta de hormigón 220x195 mm","ud":"m","pu":27.05,"te":"3.01","ts":"2.01","ti":"","to":"","_grupo":"2.01","_tipo_grupo":"SUM"},{"cod":"US13CAN080","desc":"Tapado de canaleta de hormigón","ud":"m","pu":0.82,"te":"3.01","ts":"","ti":"","to":"","_grupo":"3.01","_tipo_grupo":"EJEC"},{"cod":"US13CAN081","desc":"Sellado de canaleta de hormigón","ud":"m","pu":0.91,"te":"3.01","ts":"","ti":"","to":"","_grupo":"3.01","_tipo_grupo":"EJEC"},{"cod":"UG13CYA050","desc":"Arqueta de ladrillo in situ, tipo grande (900x900x1500 mm) y tapa hormigón","ud":"ud","pu":769.37,"te":"3.02","ts":"2.02","ti":"","to":"","_grupo":"3.02","_tipo_grupo":"EJEC"},{"cod":"UG13CYA050","desc":"Arqueta de ladrillo in situ, tipo grande (900x900x1500 mm) y tapa hormigón","ud":"ud","pu":769.37,"te":"3.02","ts":"2.02","ti":"","to":"","_grupo":"2.02","_tipo_grupo":"SUM"},{"cod":"UG01CYA008","desc":"Arqueta de hormigón o in situ (900x1500x1200 mm) y tapa hormigón","ud":"ud","pu":1390.93,"te":"3.03","ts":"2.03","ti":"","to":"","_grupo":"3.03","_tipo_grupo":"EJEC"},{"cod":"UG01CYA008","desc":"Arqueta de hormigón o in situ (900x1500x1200 mm) y tapa hormigón","ud":"ud","pu":1390.93,"te":"3.03","ts":"2.03","ti":"","to":"","_grupo":"2.03","_tipo_grupo":"SUM"},{"cod":"USP13CYA01aaa","desc":"Cámara de hormigón tipo pequeño 90x90x100 cm y tapa de fundición","ud":"ud","pu":749.92,"te":"3.03","ts":"2.03","ti":"","to":"","_grupo":"3.03","_tipo_grupo":"EJEC"},{"cod":"USP13CYA01aaa","desc":"Cámara de hormigón tipo pequeño 90x90x100 cm y tapa de fundición","ud":"ud","pu":749.92,"te":"3.03","ts":"2.03","ti":"","to":"","_grupo":"2.03","_tipo_grupo":"SUM"},{"cod":"US13CYA100","desc":"Drenaje de arqueta","ud":"ud","pu":32.74,"te":"3.04","ts":"2.04","ti":"","to":"","_grupo":"3.04","_tipo_grupo":"EJEC"},{"cod":"US13CYA100","desc":"Drenaje de arqueta","ud":"ud","pu":32.74,"te":"3.04","ts":"2.04","ti":"","to":"","_grupo":"2.04","_tipo_grupo":"SUM"},{"cod":"USP13ZYC01baa","desc":"Zanja de 0,80 a mano, normal","ud":"m","pu":12.68,"te":"3.05","ts":"","ti":"","to":"","_grupo":"3.05","_tipo_grupo":"EJEC"},{"cod":"USP13ZYC01bab","desc":"Zanja de 0,80 a mano, rocoso","ud":"m","pu":22.31,"te":"3.05","ts":"","ti":"","to":"","_grupo":"3.05","_tipo_grupo":"EJEC"},{"cod":"USP13ZYC01aac","desc":"Zanja de 0,60 a mano, balasto","ud":"m","pu":15.51,"te":"3.05","ts":"","ti":"","to":"","_grupo":"3.05","_tipo_grupo":"EJEC"},{"cod":"USP13ZYC02caba","desc":"Canalización 4 T, polietileno 110 mm, normal","ud":"m","pu":43.44,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"3.06","_tipo_grupo":"EJEC"},{"cod":"USP13ZYC02caba","desc":"Canalización 4 T, polietileno 110 mm, normal","ud":"m","pu":43.44,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"2.06","_tipo_grupo":"SUM"},{"cod":"USP13ZYC02cbba","desc":"Canalización 4 T, polietileno 110 mm, bajo vías","ud":"m","pu":59.88,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"3.06","_tipo_grupo":"EJEC"},{"cod":"USP13ZYC02cbba","desc":"Canalización 4 T, polietileno 110 mm, bajo vías","ud":"m","pu":59.88,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"2.06","_tipo_grupo":"SUM"},{"cod":"USP13ZYC02ccba","desc":"Canalización 4 T, polietileno 110 mm, rocoso","ud":"m","pu":53.1,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"3.06","_tipo_grupo":"EJEC"},{"cod":"USP13ZYC02ccba","desc":"Canalización 4 T, polietileno 110 mm, rocoso","ud":"m","pu":53.1,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"2.06","_tipo_grupo":"SUM"},{"cod":"USP13ZYC02cdba","desc":"Canalización 4 T, polietileno 110 mm, en cruce de carretera","ud":"m","pu":59.35,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"3.06","_tipo_grupo":"EJEC"},{"cod":"USP13ZYC02cdba","desc":"Canalización 4 T, polietileno 110 mm, en cruce de carretera","ud":"m","pu":59.35,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"2.06","_tipo_grupo":"SUM"},{"cod":"USP13ZYC02ceba","desc":"Canalización 4 T, polietileno 110 mm, en andén","ud":"m","pu":72.03,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"3.06","_tipo_grupo":"EJEC"},{"cod":"USP13ZYC02ceba","desc":"Canalización 4 T, polietileno 110 mm, en andén","ud":"m","pu":72.03,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"2.06","_tipo_grupo":"SUM"},{"cod":"USP13ZYC02caaa","desc":"Canalización 4 T, PVC 110 mm, normal","ud":"m","pu":34.8,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"3.06","_tipo_grupo":"EJEC"},{"cod":"USP13ZYC02caaa","desc":"Canalización 4 T, PVC 110 mm, normal","ud":"m","pu":34.8,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"2.06","_tipo_grupo":"SUM"},{"cod":"USP13ZYC02cbaa","desc":"Canalización 4 T, PVC 110 mm, bajo vías","ud":"m","pu":51.26,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"3.06","_tipo_grupo":"EJEC"},{"cod":"USP13ZYC02cbaa","desc":"Canalización 4 T, PVC 110 mm, bajo vías","ud":"m","pu":51.26,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"2.06","_tipo_grupo":"SUM"},{"cod":"USP13ZYC02ccaa","desc":"Canalización 4 T, PVC 110 mm, rocoso","ud":"m","pu":44.48,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"3.06","_tipo_grupo":"EJEC"},{"cod":"USP13ZYC02ccaa","desc":"Canalización 4 T, PVC 110 mm, rocoso","ud":"m","pu":44.48,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"2.06","_tipo_grupo":"SUM"},{"cod":"USP13ZYC02cdaa","desc":"Canalización 4 T, PVC 110 mm, en cruce de carretera","ud":"m","pu":50.72,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"3.06","_tipo_grupo":"EJEC"},{"cod":"USP13ZYC02cdaa","desc":"Canalización 4 T, PVC 110 mm, en cruce de carretera","ud":"m","pu":50.72,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"2.06","_tipo_grupo":"SUM"},{"cod":"USP13ZYC02ceaa","desc":"Canalización 4 T, PVC 110 mm, en andén","ud":"m","pu":63.39,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"3.06","_tipo_grupo":"EJEC"},{"cod":"USP13ZYC02ceaa","desc":"Canalización 4 T, PVC 110 mm, en andén","ud":"m","pu":63.39,"te":"3.06","ts":"2.06","ti":"","to":"","_grupo":"2.06","_tipo_grupo":"SUM"},{"cod":"UG13ZYC005","desc":"Canalización 6 T, polietileno 110 mm, con topo GSM-R","ud":"m","pu":481.42,"te":"3.07","ts":"2.07","ti":"","to":"","_grupo":"3.07","_tipo_grupo":"EJEC"},{"cod":"UG13ZYC005","desc":"Canalización 6 T, polietileno 110 mm, con topo GSM-R","ud":"m","pu":481.42,"te":"3.07","ts":"2.07","ti":"","to":"","_grupo":"2.07","_tipo_grupo":"SUM"},{"cod":"USP13TUB02a","desc":"Tubo de acero de 2\" para proteccion de cables","ud":"m","pu":23.56,"te":"3.08","ts":"2.08","ti":"","to":"","_grupo":"3.08","_tipo_grupo":"EJEC"},{"cod":"USP13TUB02a","desc":"Tubo de acero de 2\" para proteccion de cables","ud":"m","pu":23.56,"te":"3.08","ts":"2.08","ti":"","to":"","_grupo":"2.08","_tipo_grupo":"SUM"},{"cod":"US13ZYC045","desc":"Percha para cables, seis fichas","ud":"ud","pu":24.62,"te":"3.08","ts":"2.08","ti":"","to":"","_grupo":"3.08","_tipo_grupo":"EJEC"},{"cod":"US13ZYC045","desc":"Percha para cables, seis fichas","ud":"ud","pu":24.62,"te":"3.08","ts":"2.08","ti":"","to":"","_grupo":"2.08","_tipo_grupo":"SUM"},{"cod":"U080154LN302","desc":"Entrada de cables a caseta existente","ud":"ud","pu":194.18,"te":"3.09","ts":"","ti":"","to":"","_grupo":"3.09","_tipo_grupo":"EJEC"},{"cod":"US14URB100","desc":"Hito de hormigón","ud":"ud","pu":29.58,"te":"3.10","ts":"2.10","ti":"","to":"","_grupo":"3.10","_tipo_grupo":"EJEC"},{"cod":"US14URB100","desc":"Hito de hormigón","ud":"ud","pu":29.58,"te":"3.10","ts":"2.10","ti":"","to":"","_grupo":"2.10","_tipo_grupo":"SUM"},{"cod":"UCP13ZYC00bda","desc":"Canalización 45T, ACERO 3``","ud":"m","pu":269.9,"te":"3.11","ts":"2.11","ti":"","to":"","_grupo":"3.11","_tipo_grupo":"EJEC"},{"cod":"UCP13ZYC00bda","desc":"Canalización 45T, ACERO 3``","ud":"m","pu":269.9,"te":"3.11","ts":"2.11","ti":"","to":"","_grupo":"2.11","_tipo_grupo":"SUM"},{"cod":"US14MDT000N","desc":"DESBROCE DE MATORRALES O CORTE DE RAMAS A MANO O A MÁQUINA","ud":"m","pu":2.36,"te":"3.11","ts":"","ti":"","to":"","_grupo":"3.11","_tipo_grupo":"EJEC"},{"cod":"US14URB000N","desc":"SUPLEMENTO PARA CANALIZACIÓN CON REPOSICIÓN DE PAVIMENTO","ud":"m","pu":11.67,"te":"3.11","ts":"","ti":"","to":"","_grupo":"3.11","_tipo_grupo":"EJEC"},{"cod":"USP13CYA005N","desc":"RECRECIDO DE ARQUETA DE REGISTRO EXISTENTE","ud":"ud","pu":107.87,"te":"3.11","ts":"","ti":"","to":"","_grupo":"3.11","_tipo_grupo":"EJEC"},{"cod":"USP13CYA007N","desc":"RECONSTRUCCIÓN DE CÁMARA DE REGISTRO EXISTENTE","ud":"ud","pu":126.11,"te":"3.11","ts":"","ti":"","to":"","_grupo":"3.11","_tipo_grupo":"EJEC"},{"cod":"US13TUB08562N","desc":"SUMINISTRO E INSTALACIÓN DE PROTECCIÓN DE CABLE AÉREO","ud":"ud","pu":13.76,"te":"3.12","ts":"2.12","ti":"","to":"","_grupo":"3.12","_tipo_grupo":"EJEC"},{"cod":"US13TUB08562N","desc":"SUMINISTRO E INSTALACIÓN DE PROTECCIÓN DE CABLE AÉREO","ud":"ud","pu":13.76,"te":"3.12","ts":"2.12","ti":"","to":"","_grupo":"2.12","_tipo_grupo":"SUM"},{"cod":"US13CAT002N","desc":"CATA Y REPARACIÓN DE SUBCONDUCTO EXISTENTE EN ZANJA","ud":"ud","pu":33.22,"te":"3.12","ts":"2.12","ti":"","to":"","_grupo":"3.12","_tipo_grupo":"EJEC"},{"cod":"US13CAT002N","desc":"CATA Y REPARACIÓN DE SUBCONDUCTO EXISTENTE EN ZANJA","ud":"ud","pu":33.22,"te":"3.12","ts":"2.12","ti":"","to":"","_grupo":"2.12","_tipo_grupo":"SUM"},{"cod":"US13CAT000N","desc":"CATA Y REPARACIÓN DE SUBCONDUCTO EXISTENTE EN CANALIZACIÓN HORMIGONADA","ud":"ud","pu":118.21,"te":"3.12","ts":"2.12","ti":"","to":"","_grupo":"3.12","_tipo_grupo":"EJEC"},{"cod":"US13CAT000N","desc":"CATA Y REPARACIÓN DE SUBCONDUCTO EXISTENTE EN CANALIZACIÓN HORMIGONADA","ud":"ud","pu":118.21,"te":"3.12","ts":"2.12","ti":"","to":"","_grupo":"2.12","_tipo_grupo":"SUM"},{"cod":"US13TUB08551N","desc":"PROTECCIÓN DE CABLE DE FIBRA ÓPTICA","ud":"ud","pu":23.29,"te":"3.12","ts":"2.12","ti":"","to":"","_grupo":"3.12","_tipo_grupo":"EJEC"},{"cod":"US13TUB08551N","desc":"PROTECCIÓN DE CABLE DE FIBRA ÓPTICA","ud":"ud","pu":23.29,"te":"3.12","ts":"2.12","ti":"","to":"","_grupo":"2.12","_tipo_grupo":"SUM"},{"cod":"US13CYA0704N","desc":"EJECUCIÓN DE TALADRO DE 110 MM","ud":"ud","pu":89.65,"te":"3.13","ts":"2.13","ti":"","to":"","_grupo":"3.13","_tipo_grupo":"EJEC"},{"cod":"US13CYA0704N","desc":"EJECUCIÓN DE TALADRO DE 110 MM","ud":"ud","pu":89.65,"te":"3.13","ts":"2.13","ti":"","to":"","_grupo":"2.13","_tipo_grupo":"SUM"},{"cod":"UG01CYA085N","desc":"SUMINISTRO Y MONTAJE DE PELDAÑO DE ACERO","ud":"ud","pu":10.73,"te":"3.13","ts":"2.13","ti":"","to":"","_grupo":"3.13","_tipo_grupo":"EJEC"},{"cod":"UG01CYA085N","desc":"SUMINISTRO Y MONTAJE DE PELDAÑO DE ACERO","ud":"ud","pu":10.73,"te":"3.13","ts":"2.13","ti":"","to":"","_grupo":"2.13","_tipo_grupo":"SUM"},{"cod":"US13CYA071aN","desc":"SELLADO DE PASAMUROS","ud":"ud","pu":18.04,"te":"3.13","ts":"2.13","ti":"","to":"","_grupo":"3.13","_tipo_grupo":"EJEC"},{"cod":"US13CYA071aN","desc":"SELLADO DE PASAMUROS","ud":"ud","pu":18.04,"te":"3.13","ts":"2.13","ti":"","to":"","_grupo":"2.13","_tipo_grupo":"SUM"},{"cod":"US14DRE010","desc":"Cuneta trapecial en pie de rellenos","ud":"m","pu":23.47,"te":"3.14","ts":"","ti":"","to":"","_grupo":"3.14","_tipo_grupo":"EJEC"},{"cod":"U080154N206","desc":"Cuneta trapecial en pie de rellenos (0,5 m en base, 1m superior y 0,35 m profundidad)","ud":"m","pu":11.52,"te":"3.14","ts":"","ti":"","to":"","_grupo":"3.14","_tipo_grupo":"EJEC"},{"cod":"US14DRE020","desc":"Rotura y reposición de cuneta","ud":"m","pu":85.27,"te":"3.14","ts":"","ti":"","to":"","_grupo":"3.14","_tipo_grupo":"EJEC"},{"cod":"US13BDJ019","desc":"Bandeja de rejilla 200x60 mm bajo falso suelo","ud":"m","pu":59.02,"te":"3.15","ts":"2.15","ti":"","to":"","_grupo":"3.15","_tipo_grupo":"EJEC"},{"cod":"US13BDJ019","desc":"Bandeja de rejilla 200x60 mm bajo falso suelo","ud":"m","pu":59.02,"te":"3.15","ts":"2.15","ti":"","to":"","_grupo":"2.15","_tipo_grupo":"SUM"},{"cod":"US13CAN050","desc":"Canaleta PVC de 30x15 mm con tapa","ud":"m","pu":6.16,"te":"3.16","ts":"2.16","ti":"","to":"","_grupo":"3.16","_tipo_grupo":"EJEC"},{"cod":"US13CAN050","desc":"Canaleta PVC de 30x15 mm con tapa","ud":"m","pu":6.16,"te":"3.16","ts":"2.16","ti":"","to":"","_grupo":"2.16","_tipo_grupo":"SUM"},{"cod":"U080154LN301","desc":"Adaptación sala cuarto convencional existente","ud":"ud","pu":33079.46,"te":"3.17","ts":"2.17","ti":"","to":"","_grupo":"3.17","_tipo_grupo":"EJEC"},{"cod":"U080154LN301","desc":"Adaptación sala cuarto convencional existente","ud":"ud","pu":33079.46,"te":"3.17","ts":"2.17","ti":"","to":"","_grupo":"2.17","_tipo_grupo":"SUM"},{"cod":"UCP12CAB40bdc","desc":"Cable 32FO PKP tendido en monotubo","ud":"m","pu":2.13,"te":"3.18","ts":"2.18","ti":"","to":"","_grupo":"3.18","_tipo_grupo":"EJEC"},{"cod":"UCP12CAB40bdc","desc":"Cable 32FO PKP tendido en monotubo","ud":"m","pu":2.13,"te":"3.18","ts":"2.18","ti":"","to":"","_grupo":"2.18","_tipo_grupo":"SUM"},{"cod":"US13TUB085","desc":"Tubo de polietileno de alta densidad de 40 mm","ud":"m","pu":1.46,"te":"3.19","ts":"2.19","ti":"","to":"","_grupo":"3.19","_tipo_grupo":"EJEC"},{"cod":"US13TUB085","desc":"Tubo de polietileno de alta densidad de 40 mm","ud":"m","pu":1.46,"te":"3.19","ts":"2.19","ti":"","to":"","_grupo":"2.19","_tipo_grupo":"SUM"},{"cod":"US13TUB087N","desc":"Tubo de polietileno de alta densidad de 40 mm","ud":"m","pu":2.25,"te":"3.19","ts":"2.19","ti":"","to":"","_grupo":"3.19","_tipo_grupo":"EJEC"},{"cod":"US13TUB087N","desc":"Tubo de polietileno de alta densidad de 40 mm","ud":"m","pu":2.25,"te":"3.19","ts":"2.19","ti":"","to":"","_grupo":"2.19","_tipo_grupo":"SUM"},{"cod":"US13TUB08514N","desc":"TENDIDO DE MONOTUBO GRAPADO A MURO O TECHO","ud":"m","pu":1.46,"te":"3.19","ts":"2.19","ti":"","to":"","_grupo":"3.19","_tipo_grupo":"EJEC"},{"cod":"US13TUB08514N","desc":"TENDIDO DE MONOTUBO GRAPADO A MURO O TECHO","ud":"m","pu":1.46,"te":"3.19","ts":"2.19","ti":"","to":"","_grupo":"2.19","_tipo_grupo":"SUM"},{"cod":"US13TUB08522N","desc":"RETIRADA DE CABLE DE FIBRA ÓPTICA","ud":"m","pu":1.5,"te":"3.20","ts":"","ti":"","to":"","_grupo":"3.20","_tipo_grupo":"EJEC"},{"cod":"US11ABT000N","desc":"SUMINISTRO CONJUNTO DE HERRAJES PARA RETENCIÓN","ud":"ud","pu":18.87,"te":"3.21","ts":"2.21","ti":"","to":"","_grupo":"3.21","_tipo_grupo":"EJEC"},{"cod":"US11ABT000N","desc":"SUMINISTRO CONJUNTO DE HERRAJES PARA RETENCIÓN","ud":"ud","pu":18.87,"te":"3.21","ts":"2.21","ti":"","to":"","_grupo":"2.21","_tipo_grupo":"SUM"},{"cod":"US11ABT001N","desc":"SUMINISTRO CONJUNTO DE HERRAJES PARA SUSPENSIÓN","ud":"ud","pu":22.11,"te":"3.21","ts":"2.21","ti":"","to":"","_grupo":"3.21","_tipo_grupo":"EJEC"},{"cod":"US11ABT001N","desc":"SUMINISTRO CONJUNTO DE HERRAJES PARA SUSPENSIÓN","ud":"ud","pu":22.11,"te":"3.21","ts":"2.21","ti":"","to":"","_grupo":"2.21","_tipo_grupo":"SUM"},{"cod":"US13TUB090N","desc":"BAJADA DE CABLE ÓPTICO","ud":"ud","pu":142.81,"te":"3.18","ts":"2.18","ti":"","to":"","_grupo":"3.18","_tipo_grupo":"EJEC"},{"cod":"US13TUB090N","desc":"BAJADA DE CABLE ÓPTICO","ud":"ud","pu":142.81,"te":"3.18","ts":"2.18","ti":"","to":"","_grupo":"2.18","_tipo_grupo":"SUM"},{"cod":"UCP12CAB32PKCPN","desc":"CABLE DE 32 FIBRAS ÓPTICAS MONOMODO G.652 CONCUBIERTA PKCP","ud":"m","pu":3.91,"te":"3.18","ts":"2.18","ti":"","to":"","_grupo":"3.18","_tipo_grupo":"EJEC"},{"cod":"UCP12CAB32PKCPN","desc":"CABLE DE 32 FIBRAS ÓPTICAS MONOMODO G.652 CONCUBIERTA PKCP","ud":"m","pu":3.91,"te":"3.18","ts":"2.18","ti":"","to":"","_grupo":"2.18","_tipo_grupo":"SUM"},{"cod":"US13TUB086N","desc":"SUMINISTRO DE MONOTUBO IGNÍFUGO","ud":"m","pu":10.89,"te":"3.19","ts":"2.19","ti":"","to":"","_grupo":"3.19","_tipo_grupo":"EJEC"},{"cod":"US13TUB086N","desc":"SUMINISTRO DE MONOTUBO IGNÍFUGO","ud":"m","pu":10.89,"te":"3.19","ts":"2.19","ti":"","to":"","_grupo":"2.19","_tipo_grupo":"SUM"},{"cod":"UCP12CAB40ddc","desc":"Cable 96FO PKP tendido en monotubo","ud":"m","pu":3.52,"te":"3.18","ts":"2.18","ti":"","to":"","_grupo":"3.18","_tipo_grupo":"EJEC"},{"cod":"UCP12CAB40ddc","desc":"Cable 96FO PKP tendido en monotubo","ud":"m","pu":3.52,"te":"3.18","ts":"2.18","ti":"","to":"","_grupo":"2.18","_tipo_grupo":"SUM"},{"cod":"UCP12CAB96TKTN","desc":"Cable 96 TKT tendido en subconducto","ud":"m","pu":4.04,"te":"3.18","ts":"2.18","ti":"","to":"","_grupo":"3.18","_tipo_grupo":"EJEC"},{"cod":"UCP12CAB96TKTN","desc":"Cable 96 TKT tendido en subconducto","ud":"m","pu":4.04,"te":"3.18","ts":"2.18","ti":"","to":"","_grupo":"2.18","_tipo_grupo":"SUM"},{"cod":"MNC22RFO100N","desc":"KIT DE SELLADO DE PUERTO CIRCULAR","ud":"","pu":8.25,"te":"3.22","ts":"2.22","ti":"","to":"","_grupo":"3.22","_tipo_grupo":"EJEC"},{"cod":"MNC22RFO100N","desc":"KIT DE SELLADO DE PUERTO CIRCULAR","ud":"","pu":8.25,"te":"3.22","ts":"2.22","ti":"","to":"","_grupo":"2.22","_tipo_grupo":"SUM"},{"cod":"US13TUB08561N","desc":"UNIDAD DE ALMACENAMIENTO DE CABLE ÓPTICO","ud":"","pu":30.57,"te":"3.22","ts":"2.22","ti":"","to":"","_grupo":"3.22","_tipo_grupo":"EJEC"},{"cod":"US13TUB08561N","desc":"UNIDAD DE ALMACENAMIENTO DE CABLE ÓPTICO","ud":"","pu":30.57,"te":"3.22","ts":"2.22","ti":"","to":"","_grupo":"2.22","_tipo_grupo":"SUM"},{"cod":"UCP22RFO04ab","desc":"Empalme de segregación a 1 cable 32 FO","ud":"ud","pu":470.21,"te":"3.22","ts":"2.22","ti":"","to":"","_grupo":"3.22","_tipo_grupo":"EJEC"},{"cod":"UCP22RFO04ab","desc":"Empalme de segregación a 1 cable 32 FO","ud":"ud","pu":470.21,"te":"3.22","ts":"2.22","ti":"","to":"","_grupo":"2.22","_tipo_grupo":"SUM"},{"cod":"UCP22RFO04bd","desc":"EMPALME DE SEGREGACIÓN A DOS CABLES DE 96 FIBRAS","ud":"","pu":2364.23,"te":"3.22","ts":"2.22","ti":"","to":"","_grupo":"3.22","_tipo_grupo":"EJEC"},{"cod":"UCP22RFO04bd","desc":"EMPALME DE SEGREGACIÓN A DOS CABLES DE 96 FIBRAS","ud":"","pu":2364.23,"te":"3.22","ts":"2.22","ti":"","to":"","_grupo":"2.22","_tipo_grupo":"SUM"},{"cod":"UCP22RFO03d","desc":"Empalme en recto cables 96 FO","ud":"ud","pu":1182.17,"te":"3.22","ts":"2.22","ti":"","to":"","_grupo":"3.22","_tipo_grupo":"EJEC"},{"cod":"UCP22RFO03d","desc":"Empalme en recto cables 96 FO","ud":"ud","pu":1182.17,"te":"3.22","ts":"2.22","ti":"","to":"","_grupo":"2.22","_tipo_grupo":"SUM"},{"cod":"UCP22RFO02ad","desc":"CAJA DE EMPALME Y SEGREGACIÓN  A 1 CABLE DE 96 FIBRAS ÓPTICAS","ud":"ud","pu":632.94,"te":"3.22","ts":"2.22","ti":"","to":"","_grupo":"3.22","_tipo_grupo":"EJEC"},{"cod":"UCP22RFO02ad","desc":"CAJA DE EMPALME Y SEGREGACIÓN  A 1 CABLE DE 96 FIBRAS ÓPTICAS","ud":"ud","pu":632.94,"te":"3.22","ts":"2.22","ti":"","to":"","_grupo":"2.22","_tipo_grupo":"SUM"},{"cod":"UCP22RFO01d","desc":"Caja empalme recto 96 FO","ud":"ud","pu":550.37,"te":"3.22","ts":"2.22","ti":"","to":"","_grupo":"3.22","_tipo_grupo":"EJEC"},{"cod":"UCP22RFO01d","desc":"Caja empalme recto 96 FO","ud":"ud","pu":550.37,"te":"3.22","ts":"2.22","ti":"","to":"","_grupo":"2.22","_tipo_grupo":"SUM"},{"cod":"UC2020RCD03N","desc":"Switch acceso IPMM 12 puertos","ud":"ud","pu":1342.54,"te":"3.23","ts":"2.23","ti":"","to":"","_grupo":"3.23","_tipo_grupo":"EJEC"},{"cod":"UC2020RCD03N","desc":"Switch acceso IPMM 12 puertos","ud":"ud","pu":1342.54,"te":"3.23","ts":"2.23","ti":"","to":"","_grupo":"2.23","_tipo_grupo":"SUM"},{"cod":"UC2020RCD04N","desc":"Switch acceso IPMM 24 puertos","ud":"ud","pu":1735.91,"te":"3.23","ts":"2.23","ti":"","to":"","_grupo":"3.23","_tipo_grupo":"EJEC"},{"cod":"UC2020RCD04N","desc":"Switch acceso IPMM 24 puertos","ud":"ud","pu":1735.91,"te":"3.23","ts":"2.23","ti":"","to":"","_grupo":"2.23","_tipo_grupo":"SUM"},{"cod":"UC2020RCD06N","desc":"Switch acceso IPMM industrial 12 puertos","ud":"ud","pu":1290.1,"te":"3.23","ts":"2.23","ti":"","to":"","_grupo":"3.23","_tipo_grupo":"EJEC"},{"cod":"UC2020RCD06N","desc":"Switch acceso IPMM industrial 12 puertos","ud":"ud","pu":1290.1,"te":"3.23","ts":"2.23","ti":"","to":"","_grupo":"2.23","_tipo_grupo":"SUM"},{"cod":"UC2020RCD07N","desc":"Switch acceso IPMM industrial 8 puertos","ud":"ud","pu":1132.75,"te":"3.23","ts":"2.23","ti":"","to":"","_grupo":"3.23","_tipo_grupo":"EJEC"},{"cod":"UC2020RCD07N","desc":"Switch acceso IPMM industrial 8 puertos","ud":"ud","pu":1132.75,"te":"3.23","ts":"2.23","ti":"","to":"","_grupo":"2.23","_tipo_grupo":"SUM"},{"cod":"UC2020RCD08N","desc":"Switch acceso IPMM industrial 4 puertos","ud":"ud","pu":975.4,"te":"3.23","ts":"2.23","ti":"","to":"","_grupo":"3.23","_tipo_grupo":"EJEC"},{"cod":"UC2020RCD08N","desc":"Switch acceso IPMM industrial 4 puertos","ud":"ud","pu":975.4,"te":"3.23","ts":"2.23","ti":"","to":"","_grupo":"2.23","_tipo_grupo":"SUM"},{"cod":"UC2020RCD09N","desc":"Switch acceso IPMM VF","ud":"ud","pu":3696.19,"te":"3.23","ts":"2.23","ti":"","to":"","_grupo":"3.23","_tipo_grupo":"EJEC"},{"cod":"UC2020RCD09N","desc":"Switch acceso IPMM VF","ud":"ud","pu":3696.19,"te":"3.23","ts":"2.23","ti":"","to":"","_grupo":"2.23","_tipo_grupo":"SUM"},{"cod":"UC2020RCD10N","desc":"Nodo IPMM Legacy","ud":"ud","pu":7193.14,"te":"3.24","ts":"2.24","ti":"","to":"","_grupo":"3.24","_tipo_grupo":"EJEC"},{"cod":"UC2020RCD10N","desc":"Nodo IPMM Legacy","ud":"ud","pu":7193.14,"te":"3.24","ts":"2.24","ti":"","to":"","_grupo":"2.24","_tipo_grupo":"SUM"},{"cod":"UC22SFO010","desc":"Subbastidor para UCC, UMR y USO","ud":"ud","pu":1125.03,"te":"3.25","ts":"2.25","ti":"","to":"","_grupo":"3.25","_tipo_grupo":"EJEC"},{"cod":"UC22SFO010","desc":"Subbastidor para UCC, UMR y USO","ud":"ud","pu":1125.03,"te":"3.25","ts":"2.25","ti":"","to":"","_grupo":"2.25","_tipo_grupo":"SUM"},{"cod":"UC22SFO050","desc":"Unidad de medidas reflectométricas (UMR)","ud":"ud","pu":15128.99,"te":"3.25","ts":"2.26","ti":"","to":"","_grupo":"3.25","_tipo_grupo":"EJEC"},{"cod":"UC22SFO050","desc":"Unidad de medidas reflectométricas (UMR)","ud":"ud","pu":15128.99,"te":"3.25","ts":"2.26","ti":"","to":"","_grupo":"2.26","_tipo_grupo":"SUM"},{"cod":"UC22SFO060","desc":"Unidad de seleccion óptica (USO) 8 salidas","ud":"ud","pu":10107.21,"te":"3.25","ts":"2.27","ti":"","to":"","_grupo":"3.25","_tipo_grupo":"EJEC"},{"cod":"UC22SFO060","desc":"Unidad de seleccion óptica (USO) 8 salidas","ud":"ud","pu":10107.21,"te":"3.25","ts":"2.27","ti":"","to":"","_grupo":"2.27","_tipo_grupo":"SUM"},{"cod":"UC22SFO080","desc":"Unidad de control y comunicaciones (UCC)","ud":"ud","pu":1564.36,"te":"3.25","ts":"2.28","ti":"","to":"","_grupo":"3.25","_tipo_grupo":"EJEC"},{"cod":"UC22SFO080","desc":"Unidad de control y comunicaciones (UCC)","ud":"ud","pu":1564.36,"te":"3.25","ts":"2.28","ti":"","to":"","_grupo":"2.28","_tipo_grupo":"SUM"},{"cod":"UC22SFO110","desc":"Activación del SSFO","ud":"ud","pu":38088.33,"te":"3.26","ts":"","ti":"","to":"","_grupo":"3.26","_tipo_grupo":"EJEC"},{"cod":"UC22ENE002_1","desc":"Bastidor 19\" misceláneo 2000x600x600 mm","ud":"ud","pu":738.63,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"3.29","_tipo_grupo":"EJEC"},{"cod":"UC22ENE002_1","desc":"Bastidor 19\" misceláneo 2000x600x600 mm","ud":"ud","pu":738.63,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"2.29","_tipo_grupo":"SUM"},{"cod":"UC22ENE005_1","desc":"Subbastidor de rectificadores para SAI","ud":"ud","pu":135.86,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"3.29","_tipo_grupo":"EJEC"},{"cod":"UC22ENE005_1","desc":"Subbastidor de rectificadores para SAI","ud":"ud","pu":135.86,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"2.29","_tipo_grupo":"SUM"},{"cod":"UC22ENE006_1","desc":"Subbastidor de órganos comunes SAI","ud":"ud","pu":232.19,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"3.29","_tipo_grupo":"EJEC"},{"cod":"UC22ENE006_1","desc":"Subbastidor de órganos comunes SAI","ud":"ud","pu":232.19,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"2.29","_tipo_grupo":"SUM"},{"cod":"UC22ENE010_1","desc":"Módulo de control y alarmas SAI","ud":"ud","pu":350.72,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"3.29","_tipo_grupo":"EJEC"},{"cod":"UC22ENE010_1","desc":"Módulo de control y alarmas SAI","ud":"ud","pu":350.72,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"2.29","_tipo_grupo":"SUM"},{"cod":"UC22ENE011_1","desc":"Módulo de distribución DC 48Vcc SAI","ud":"ud","pu":280.38,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"3.29","_tipo_grupo":"EJEC"},{"cod":"UC22ENE011_1","desc":"Módulo de distribución DC 48Vcc SAI","ud":"ud","pu":280.38,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"2.29","_tipo_grupo":"SUM"},{"cod":"UC22ENE012_1","desc":"Módulo de protección de baterías SAI","ud":"ud","pu":302.53,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"3.29","_tipo_grupo":"EJEC"},{"cod":"UC22ENE012_1","desc":"Módulo de protección de baterías SAI","ud":"ud","pu":302.53,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"2.29","_tipo_grupo":"SUM"},{"cod":"UC22ENE015_1","desc":"Módulo rectificador (48V/2500W-50A) SAI","ud":"ud","pu":287.81,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"3.29","_tipo_grupo":"EJEC"},{"cod":"UC22ENE015_1","desc":"Módulo rectificador (48V/2500W-50A) SAI","ud":"ud","pu":287.81,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"2.29","_tipo_grupo":"SUM"},{"cod":"UC22ENE020_1","desc":"Sistema de onduladores 230 Vca SAI","ud":"ud","pu":2248.29,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"3.29","_tipo_grupo":"EJEC"},{"cod":"UC22ENE020_1","desc":"Sistema de onduladores 230 Vca SAI","ud":"ud","pu":2248.29,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"2.29","_tipo_grupo":"SUM"},{"cod":"UC22ENE025_1","desc":"Sistema de alimentación ininterrumpida","ud":"ud","pu":4204.86,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"3.29","_tipo_grupo":"EJEC"},{"cod":"UC22ENE025_1","desc":"Sistema de alimentación ininterrumpida","ud":"ud","pu":4204.86,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"2.29","_tipo_grupo":"SUM"},{"cod":"UC22ENE030_1","desc":"Batería de plomo hermético 100 Ah en rack","ud":"ud","pu":699.14,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"3.29","_tipo_grupo":"EJEC"},{"cod":"UC22ENE030_1","desc":"Batería de plomo hermético 100 Ah en rack","ud":"ud","pu":699.14,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"2.29","_tipo_grupo":"SUM"},{"cod":"UC22ENE038_1","desc":"Batería de plomo hermético 190 Ah en rack","ud":"ud","pu":1318.71,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"3.29","_tipo_grupo":"EJEC"},{"cod":"UC22ENE038_1","desc":"Batería de plomo hermético 190 Ah en rack","ud":"ud","pu":1318.71,"te":"3.29","ts":"2.29","ti":"","to":"","_grupo":"2.29","_tipo_grupo":"SUM"},{"cod":"UETTELCO01N","desc":"ENCARGADOS DE TRABAJOS (TELECOMUNICACIONES)","ud":"h","pu":57.69,"te":"","ts":"","ti":"1.01","to":"","_grupo":"1.01","_tipo_grupo":"ING"},{"cod":"UETTELCO02N","desc":"JORNADA DE ALQUILER DE VAGONETA","ud":"d","pu":1268.49,"te":"","ts":"","ti":"1.02","to":"","_grupo":"1.02","_tipo_grupo":"ING"},{"cod":"UETTELCO03N","desc":"ENCARGADOS DE TRABAJOS (IISS)","ud":"h","pu":59.68,"te":"","ts":"","ti":"1.03","to":"","_grupo":"1.03","_tipo_grupo":"ING"},{"cod":"UETTELCO04N","desc":"ENCARGADOS DE TRABAJOS (SSEE)","ud":"h","pu":91.7,"te":"","ts":"","ti":"1.04","to":"","_grupo":"1.04","_tipo_grupo":"ING"},{"cod":"UETTELCO05N","desc":"ENCARGADOS DE TRABAJOS (CATENARIA)","ud":"h","pu":57.66,"te":"","ts":"","ti":"1.05","to":"","_grupo":"1.05","_tipo_grupo":"ING"},{"cod":"UG10DOC001N","desc":"ISA o ASBO","ud":"ud","pu":3400.43,"te":"","ts":"","ti":"","to":"4.01","_grupo":"4.01","_tipo_grupo":"OTROS"},{"cod":"UG10DOC002N","desc":"INTEROPERABILIDAD POR NOBO","ud":"ud","pu":16497.6,"te":"","ts":"","ti":"","to":"4.01","_grupo":"4.01","_tipo_grupo":"OTROS"},{"cod":"UG10DOC003N","desc":"AS BUILT","ud":"ud","pu":3107.47,"te":"","ts":"","ti":"","to":"4.01","_grupo":"4.01","_tipo_grupo":"OTROS"},{"cod":"G0613N001","desc":"Clasificación y recogida selectiva","ud":"t","pu":2.97,"te":"","ts":"","ti":"","to":"6.01","_grupo":"6.01","_tipo_grupo":"OTROS"},{"cod":"G0613N002","desc":"Gestión de RNP no pétreos","ud":"t","pu":14.46,"te":"","ts":"","ti":"","to":"6.01","_grupo":"6.01","_tipo_grupo":"OTROS"},{"cod":"G0613N003","desc":"Gestión de RNP pétreos","ud":"t","pu":6.47,"te":"","ts":"","ti":"","to":"6.01","_grupo":"6.01","_tipo_grupo":"OTROS"},{"cod":"G0613N004N","desc":"Gestión de residuos peligrosos","ud":"t","pu":366.1,"te":"","ts":"","ti":"","to":"6.01","_grupo":"6.01","_tipo_grupo":"OTROS"},{"cod":"G0613N006N","desc":"CONTRATACIÓN GESTOR DE RESIDUOS AUTORIZADO","ud":"ud","pu":1263.45,"te":"","ts":"","ti":"","to":"6.01","_grupo":"6.01","_tipo_grupo":"OTROS"},{"cod":"G0613N007N","desc":"INSTALACIÓN DE PUNTO DE LIMPIEZA CANALETAS DE HORMIGONERAS","ud":"ud","pu":187.5,"te":"","ts":"","ti":"","to":"6.01","_grupo":"6.01","_tipo_grupo":"OTROS"},{"cod":"UG25IAM010","desc":"Jalonamiento temporal de protección GSM-R","ud":"m","pu":0.37,"te":"","ts":"","ti":"","to":"7.01","_grupo":"7.01","_tipo_grupo":"OTROS"},{"cod":"UC22RFO008","desc":"Armario repartidor con 192 conectores y 128 bandejas de fusión","ud":"ud","pu":6011.55,"te":"3.30","ts":"2.30","ti":"","to":"","_grupo":"3.30","_tipo_grupo":"EJEC"},{"cod":"UC22RFO008","desc":"Armario repartidor con 192 conectores y 128 bandejas de fusión","ud":"ud","pu":6011.55,"te":"3.30","ts":"2.30","ti":"","to":"","_grupo":"2.30","_tipo_grupo":"SUM"},{"cod":"UC22RFO009","desc":"Unidad de interconexión de 72 conectores para repartidor óptico","ud":"ud","pu":776.34,"te":"3.30","ts":"2.31","ti":"","to":"","_grupo":"3.30","_tipo_grupo":"EJEC"},{"cod":"UC22RFO009","desc":"Unidad de interconexión de 72 conectores para repartidor óptico","ud":"ud","pu":776.34,"te":"3.30","ts":"2.31","ti":"","to":"","_grupo":"2.31","_tipo_grupo":"SUM"},{"cod":"UCP22RFO06d","desc":"Conectorización 32 FO a repartidor","ud":"ud","pu":565.77,"te":"3.30","ts":"2.32","ti":"","to":"","_grupo":"3.30","_tipo_grupo":"EJEC"},{"cod":"UCP22RFO06d","desc":"Conectorización 32 FO a repartidor","ud":"ud","pu":565.77,"te":"3.30","ts":"2.32","ti":"","to":"","_grupo":"2.32","_tipo_grupo":"SUM"},{"cod":"UCP22RFO07i","desc":"Medidas ópticas de reflectometría de 1 fibras","ud":"ud","pu":16.99,"te":"3.30","ts":"","ti":"","to":"","_grupo":"3.30","_tipo_grupo":"EJEC"},{"cod":"UC22RFO008AN","desc":"Repartidor mural ETSI 750x600x300","ud":"ud","pu":612.88,"te":"3.30","ts":"2.33","ti":"","to":"","_grupo":"3.30","_tipo_grupo":"EJEC"},{"cod":"UC22RFO008AN","desc":"Repartidor mural ETSI 750x600x300","ud":"ud","pu":612.88,"te":"3.30","ts":"2.33","ti":"","to":"","_grupo":"2.33","_tipo_grupo":"SUM"},{"cod":"UC22RFO008BN","desc":"Repartidor mural ETSI 925x600x300","ud":"ud","pu":629.75,"te":"3.30","ts":"2.33","ti":"","to":"","_grupo":"3.30","_tipo_grupo":"EJEC"},{"cod":"UC22RFO008BN","desc":"Repartidor mural ETSI 925x600x300","ud":"ud","pu":629.75,"te":"3.30","ts":"2.33","ti":"","to":"","_grupo":"2.33","_tipo_grupo":"SUM"},{"cod":"UC22RFO008CN","desc":"Subastidor de repartidor óptico para 24 FO","ud":"ud","pu":281.14,"te":"3.30","ts":"2.34","ti":"","to":"","_grupo":"3.30","_tipo_grupo":"EJEC"},{"cod":"UC22RFO008CN","desc":"Subastidor de repartidor óptico para 24 FO","ud":"ud","pu":281.14,"te":"3.30","ts":"2.34","ti":"","to":"","_grupo":"2.34","_tipo_grupo":"SUM"},{"cod":"UC22RFO008DN","desc":"Subastidor de repartidor óptico para 72 FO","ud":"ud","pu":371.1,"te":"3.30","ts":"2.34","ti":"","to":"","_grupo":"3.30","_tipo_grupo":"EJEC"},{"cod":"UC22RFO008DN","desc":"Subastidor de repartidor óptico para 72 FO","ud":"ud","pu":371.1,"te":"3.30","ts":"2.34","ti":"","to":"","_grupo":"2.34","_tipo_grupo":"SUM"},{"cod":"UC22RFO008EN","desc":"Subastidor de repartidor óptico para 120 FO","ud":"ud","pu":472.31,"te":"3.30","ts":"2.34","ti":"","to":"","_grupo":"3.30","_tipo_grupo":"EJEC"},{"cod":"UC22RFO008EN","desc":"Subastidor de repartidor óptico para 120 FO","ud":"ud","pu":472.31,"te":"3.30","ts":"2.34","ti":"","to":"","_grupo":"2.34","_tipo_grupo":"SUM"},{"cod":"UCP22RFO07iN","desc":"Medidas ópticas de polarización (PMD)","ud":"ud","pu":30.94,"te":"3.30","ts":"","ti":"","to":"","_grupo":"3.30","_tipo_grupo":"EJEC"},{"cod":"UC22RFO017aN","desc":"BANDEJA DE EMPALME/CONECTORES PARA REPARTIDOR","ud":"ud","pu":66.0,"te":"3.30","ts":"2.35","ti":"","to":"","_grupo":"3.30","_tipo_grupo":"EJEC"},{"cod":"UC22RFO017aN","desc":"BANDEJA DE EMPALME/CONECTORES PARA REPARTIDOR","ud":"ud","pu":66.0,"te":"3.30","ts":"2.35","ti":"","to":"","_grupo":"2.35","_tipo_grupo":"SUM"},{"cod":"UC22RFO517","desc":"ARMARIO DE 19'' DE PROPÓSITO GENERAL","ud":"ud","pu":523.43,"te":"3.30","ts":"2.36","ti":"","to":"","_grupo":"3.30","_tipo_grupo":"EJEC"},{"cod":"UC22RFO517","desc":"ARMARIO DE 19'' DE PROPÓSITO GENERAL","ud":"ud","pu":523.43,"te":"3.30","ts":"2.36","ti":"","to":"","_grupo":"2.36","_tipo_grupo":"SUM"},{"cod":"UC22RFO008N","desc":"ARMARIO REPARTIDOR PARA EMPALME","ud":"ud","pu":2452.95,"te":"3.30","ts":"2.30","ti":"","to":"","_grupo":"3.30","_tipo_grupo":"EJEC"},{"cod":"UC22RFO008N","desc":"ARMARIO REPARTIDOR PARA EMPALME","ud":"ud","pu":2452.95,"te":"3.30","ts":"2.30","ti":"","to":"","_grupo":"2.30","_tipo_grupo":"SUM"},{"cod":"UC22RFO017N","desc":"UNIDAD DE EMPALME DE 32 BANDEJAS EN CIRCUITO INDIVIDUAL","ud":"ud","pu":655.2,"te":"3.30","ts":"2.37","ti":"","to":"","_grupo":"3.30","_tipo_grupo":"EJEC"},{"cod":"UC22RFO017N","desc":"UNIDAD DE EMPALME DE 32 BANDEJAS EN CIRCUITO INDIVIDUAL","ud":"ud","pu":655.2,"te":"3.30","ts":"2.37","ti":"","to":"","_grupo":"2.37","_tipo_grupo":"SUM"},{"cod":"UC22RFO009N","desc":"MODULO DE INTERCONEXIÓN EQUIPADO CON 6 BANDEJAS DE 12 CONECTORES.","ud":"ud","pu":776.34,"te":"3.30","ts":"2.38","ti":"","to":"","_grupo":"3.30","_tipo_grupo":"EJEC"},{"cod":"UC22RFO009N","desc":"MODULO DE INTERCONEXIÓN EQUIPADO CON 6 BANDEJAS DE 12 CONECTORES.","ud":"ud","pu":776.34,"te":"3.30","ts":"2.38","ti":"","to":"","_grupo":"2.38","_tipo_grupo":"SUM"}];
 
+const PERSONAL_MAESTRO = [
+  // ── ENCARGADOS Y TÉCNICOS ──────────────────────────────────
+  // Rellena con los datos reales de Costes_Personal del Excel
+  { num:'000055', nombre:'Javier Bartolomé Rodríguez',  cat:'Encargado Obra',           tipo:'ENC', ch:32.50, dc:45.00, md:22.50, km:0.26 },
+  { num:'001207', nombre:'Carlos Bartolomé Rodríguez',  cat:'Encargado Obra',           tipo:'ENC', ch:32.50, dc:45.00, md:22.50, km:0.26 },
+  { num:'001103', nombre:'Encargado SSEE',              cat:'Encargado Especialista',   tipo:'ENC', ch:35.00, dc:45.00, md:22.50, km:0.26 },
+  // ── OPERARIOS Y OFICIALES ───────────────────────────────────
+  { num:'001312', nombre:'Lucas Álvarez Bedmar',        cat:'Oficial 1ª Telecom',       tipo:'MOD', ch:24.80, dc:45.00, md:22.50, km:0.26 },
+  { num:'001415', nombre:'Julio Alberto Chantada Brazado', cat:'Oficial 1ª Telecom',   tipo:'MOD', ch:24.80, dc:45.00, md:22.50, km:0.26 },
+  { num:'001145', nombre:'José Adrián Otero Pequeño',   cat:'Oficial 2ª Telecom',       tipo:'MOD', ch:22.50, dc:45.00, md:22.50, km:0.26 },
+  { num:'001158', nombre:'Jesús José Barreiro Fernández', cat:'Peón Especialista',      tipo:'MOD', ch:20.00, dc:45.00, md:22.50, km:0.26 },
+  // ── Añadir más cuando completes el Excel ───────────────────
+];
+
+const MAQ_MAESTRO = [
+  // ── MAQUINARIA PESADA ──────────────────────────────────────
+  { cod:'MA01',      desc:'Retroexcavadora Takeuchi 5Tn, 3 cazos', tipo:'MAQ', prov:'Afrosan',  ch:38.00, cd:null,  ud:'h'   },
+  { cod:'MA01 (A)',  desc:'Retroexcavadora Bimodal',               tipo:'MAQ', prov:'Afrosan',  ch:42.00, cd:null,  ud:'h'   },
+  { cod:'MA05',      desc:'Telescópica (Manitou)',                  tipo:'MAQ', prov:'Afrosan',  ch:35.00, cd:null,  ud:'h'   },
+  { cod:'MA11',      desc:'Retroexcavadora Bimodal',               tipo:'MAQ', prov:'Afrosan',  ch:42.00, cd:null,  ud:'h'   },
+  { cod:'MA21',      desc:'Vallas de obra',                        tipo:'AUX', prov:'Afrosan',  ch:null,  cd:15.00, ud:'día' },
+  { cod:'MA24',      desc:'Martillo Picador Ministro',             tipo:'MAQ', prov:'Afrosan',  ch:22.00, cd:null,  ud:'h'   },
+  { cod:'MA99',      desc:'Otras',                                 tipo:'AUX', prov:'',         ch:null,  cd:null,  ud:'h'   },
+  // ── VEHÍCULOS ──────────────────────────────────────────────
+  { cod:'VA-1877MJG', desc:'Ford (1877MJG)',         tipo:'VEH', prov:'Alquiler', ch:null, cd:65.00, ud:'día' },
+  { cod:'4386RLL',    desc:'Renault (4386RLL)',       tipo:'VEH', prov:'Alquiler', ch:null, cd:65.00, ud:'día' },
+  { cod:'5144NCW',    desc:'Renault (5144NCW)',       tipo:'VEH', prov:'Alquiler', ch:null, cd:65.00, ud:'día' },
+  { cod:'6120MZB',    desc:'Renault (6120MZB)',       tipo:'VEH', prov:'Alquiler', ch:null, cd:65.00, ud:'día' },
+  { cod:'VA-5697MJ',  desc:'Seat Ibiza (5697MJ)',     tipo:'VEH', prov:'Alquiler', ch:null, cd:45.00, ud:'día' },
+  { cod:'CONTENEDOR', desc:'Contenedor Obra',         tipo:'AUX', prov:'Afrosan',  ch:null, cd:25.00, ud:'día' },
+  // ── Añadir más cuando completes el Excel ───────────────────
+];
+
 const PARTIDAS_PPTO = [{"cod":"US13CYA070","desc":"Entronque de tubos en arqueta o cámara existente","ud":"ud","med":36817.59,"pu_ec":310.15,"venta_ppto":47142.94,"coste_sum_ppto":0,"coste_ejec_ppto":36817.59,"coste_otros_ppto":0,"coste_total_ppto":36817.59,"te":"3.01","ts":"","ti":"","to":""},{"cod":"US13CAN100","desc":"Mandrilado de canalización existente","ud":"m","med":45049.03,"pu_ec":1.7,"venta_ppto":53735.44,"coste_sum_ppto":0,"coste_ejec_ppto":45049.03,"coste_otros_ppto":0,"coste_total_ppto":45049.03,"te":"3.01","ts":"","ti":"","to":""},{"cod":"US13CAN001","desc":"Apertura canaleta de hormigón a mano","ud":"m","med":2372.62,"pu_ec":0.83,"venta_ppto":2080.42,"coste_sum_ppto":0,"coste_ejec_ppto":2372.62,"coste_otros_ppto":0,"coste_total_ppto":2372.62,"te":"3.01","ts":"","ti":"","to":""},{"cod":"US13CAN002","desc":"Apertura canaleta de hormigón a máquina","ud":"m","med":491.7,"pu_ec":0.27,"venta_ppto":0,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":0,"coste_total_ppto":0,"te":"3.01","ts":"","ti":"","to":""},{"cod":"US13CAN003","desc":"Limpieza de canaleta de hormigón","ud":"m","med":2878.09,"pu_ec":0.37,"venta_ppto":900.32,"coste_sum_ppto":0,"coste_ejec_ppto":2878.09,"coste_otros_ppto":0,"coste_total_ppto":2878.09,"te":"3.01","ts":"","ti":"","to":""},{"cod":"US13CAN005","desc":"Reposición tapas canaleta hormigón","ud":"m","med":20989.02,"pu_ec":9.45,"venta_ppto":21036.73,"coste_sum_ppto":0,"coste_ejec_ppto":4692.59,"coste_otros_ppto":0,"coste_total_ppto":20989.02,"te":"3.01","ts":"2.01","ti":"","to":""},{"cod":"US13CAN010","desc":"Canaleta de hormigón 400x290 mm","ud":"m","med":220531.01,"pu_ec":41.98,"venta_ppto":214095.2,"coste_sum_ppto":0,"coste_ejec_ppto":113698.76,"coste_otros_ppto":0,"coste_total_ppto":220531.01,"te":"3.01","ts":"2.01","ti":"","to":""},{"cod":"US13CAN008","desc":"Canaleta de hormigón 220x195 mm","ud":"m","med":214299.72,"pu_ec":27.05,"venta_ppto":206383.66,"coste_sum_ppto":0,"coste_ejec_ppto":113416.37,"coste_otros_ppto":0,"coste_total_ppto":214299.72,"te":"3.01","ts":"2.01","ti":"","to":""},{"cod":"US13CAN080","desc":"Tapado de canaleta de hormigón","ud":"m","med":2930.89,"pu_ec":0.82,"venta_ppto":2873.23,"coste_sum_ppto":0,"coste_ejec_ppto":2930.89,"coste_otros_ppto":0,"coste_total_ppto":2930.89,"te":"3.01","ts":"","ti":"","to":""},{"cod":"US13CAN081","desc":"Sellado de canaleta de hormigón","ud":"m","med":465.25,"pu_ec":0.91,"venta_ppto":455.44,"coste_sum_ppto":0,"coste_ejec_ppto":465.25,"coste_otros_ppto":0,"coste_total_ppto":465.25,"te":"3.01","ts":"","ti":"","to":""},{"cod":"UG13CYA050","desc":"Arqueta de ladrillo in situ, tipo grande (900x900x1500 mm) y tapa hormigón","ud":"ud","med":43760.31,"pu_ec":769.37,"venta_ppto":46931.7,"coste_sum_ppto":0,"coste_ejec_ppto":18204.36,"coste_otros_ppto":0,"coste_total_ppto":43760.31,"te":"3.02","ts":"2.02","ti":"","to":""},{"cod":"UG01CYA008","desc":"Arqueta de hormigón o in situ (900x1500x1200 mm) y tapa hormigón","ud":"ud","med":94370.4,"pu_ec":1390.93,"venta_ppto":141875.21,"coste_sum_ppto":0,"coste_ejec_ppto":42616.11,"coste_otros_ppto":0,"coste_total_ppto":94370.4,"te":"3.03","ts":"2.03","ti":"","to":""},{"cod":"USP13CYA01aaa","desc":"Cámara de hormigón tipo pequeño 90x90x100 cm y tapa de fundición","ud":"ud","med":273500.61,"pu_ec":749.92,"venta_ppto":277469.44,"coste_sum_ppto":0,"coste_ejec_ppto":128823.21,"coste_otros_ppto":0,"coste_total_ppto":273500.61,"te":"3.03","ts":"2.03","ti":"","to":""},{"cod":"US13CYA100","desc":"Drenaje de arqueta","ud":"ud","med":2179.76,"pu_ec":32.74,"venta_ppto":1669.52,"coste_sum_ppto":0,"coste_ejec_ppto":1331.75,"coste_otros_ppto":0,"coste_total_ppto":2179.76,"te":"3.04","ts":"2.04","ti":"","to":""},{"cod":"USP13ZYC01baa","desc":"Zanja de 0,80 a mano, normal","ud":"m","med":296753.55,"pu_ec":12.68,"venta_ppto":126849.24,"coste_sum_ppto":0,"coste_ejec_ppto":96355.75,"coste_otros_ppto":0,"coste_total_ppto":96355.75,"te":"3.05","ts":"","ti":"","to":""},{"cod":"USP13ZYC01bab","desc":"Zanja de 0,80 a mano, rocoso","ud":"m","med":791422.59,"pu_ec":22.31,"venta_ppto":0,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":0,"coste_total_ppto":0,"te":"3.05","ts":"","ti":"","to":""},{"cod":"USP13ZYC01aac","desc":"Zanja de 0,60 a mano, balasto","ud":"m","med":1010871.25,"pu_ec":15.51,"venta_ppto":0,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":0,"coste_total_ppto":0,"te":"3.05","ts":"","ti":"","to":""},{"cod":"USP13ZYC02caba","desc":"Canalización 4 T, polietileno 110 mm, normal","ud":"m","med":93128.03,"pu_ec":43.44,"venta_ppto":173765.47,"coste_sum_ppto":0,"coste_ejec_ppto":119372.86,"coste_otros_ppto":0,"coste_total_ppto":186256.07,"te":"3.06","ts":"2.06","ti":"","to":""},{"cod":"USP13ZYC02cbba","desc":"Canalización 4 T, polietileno 110 mm, bajo vías","ud":"m","med":311978.27,"pu_ec":59.88,"venta_ppto":194617.43,"coste_sum_ppto":0,"coste_ejec_ppto":452622.08,"coste_otros_ppto":0,"coste_total_ppto":506964.69,"te":"3.06","ts":"2.06","ti":"","to":""},{"cod":"USP13ZYC02ccba","desc":"Canalización 4 T, polietileno 110 mm, rocoso","ud":"m","med":132918.99,"pu_ec":53.1,"venta_ppto":172579.07,"coste_sum_ppto":0,"coste_ejec_ppto":161650.74,"coste_otros_ppto":0,"coste_total_ppto":215993.35,"te":"3.06","ts":"2.06","ti":"","to":""},{"cod":"USP13ZYC02cdba","desc":"Canalización 4 T, polietileno 110 mm, en cruce de carretera","ud":"m","med":240624.07,"pu_ec":59.35,"venta_ppto":0,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":0,"coste_total_ppto":0,"te":"3.06","ts":"2.06","ti":"","to":""},{"cod":"USP13ZYC02ceba","desc":"Canalización 4 T, polietileno 110 mm, en andén","ud":"m","med":162267.37,"pu_ec":72.03,"venta_ppto":234089.14,"coste_sum_ppto":0,"coste_ejec_ppto":169733.28,"coste_otros_ppto":0,"coste_total_ppto":263684.47,"te":"3.06","ts":"2.06","ti":"","to":""},{"cod":"USP13ZYC02caaa","desc":"Canalización 4 T, PVC 110 mm, normal","ud":"m","med":93128.03,"pu_ec":34.8,"venta_ppto":0,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":0,"coste_total_ppto":0,"te":"3.06","ts":"2.06","ti":"","to":""},{"cod":"USP13ZYC02cbaa","desc":"Canalización 4 T, PVC 110 mm, bajo vías","ud":"m","med":194986.42,"pu_ec":51.26,"venta_ppto":0,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":0,"coste_total_ppto":0,"te":"3.06","ts":"2.06","ti":"","to":""},{"cod":"USP13ZYC02ccaa","desc":"Canalización 4 T, PVC 110 mm, rocoso","ud":"m","med":83074.37,"pu_ec":44.48,"venta_ppto":0,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":0,"coste_total_ppto":0,"te":"3.06","ts":"2.06","ti":"","to":""},{"cod":"USP13ZYC02cdaa","desc":"Canalización 4 T, PVC 110 mm, en cruce de carretera","ud":"m","med":150390.04,"pu_ec":50.72,"venta_ppto":0,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":0,"coste_total_ppto":0,"te":"3.06","ts":"2.06","ti":"","to":""},{"cod":"USP13ZYC02ceaa","desc":"Canalización 4 T, PVC 110 mm, en andén","ud":"m","med":102228.44,"pu_ec":63.39,"venta_ppto":0,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":0,"coste_total_ppto":0,"te":"3.06","ts":"2.06","ti":"","to":""},{"cod":"UG13ZYC005","desc":"Canalización 6 T, polietileno 110 mm, con topo GSM-R","ud":"m","med":201300.0,"pu_ec":481.42,"venta_ppto":240709.93,"coste_sum_ppto":0,"coste_ejec_ppto":201300.0,"coste_otros_ppto":0,"coste_total_ppto":201300.0,"te":"3.07","ts":"2.07","ti":"","to":""},{"cod":"USP13TUB02a","desc":"Tubo de acero de 2\" para proteccion de cables","ud":"m","med":24784.79,"pu_ec":23.56,"venta_ppto":25915.25,"coste_sum_ppto":0,"coste_ejec_ppto":17104.04,"coste_otros_ppto":0,"coste_total_ppto":24784.79,"te":"3.08","ts":"2.08","ti":"","to":""},{"cod":"US13ZYC045","desc":"Percha para cables, seis fichas","ud":"ud","med":16712.54,"pu_ec":24.62,"venta_ppto":27201.12,"coste_sum_ppto":0,"coste_ejec_ppto":7865.25,"coste_otros_ppto":0,"coste_total_ppto":16712.54,"te":"3.08","ts":"2.08","ti":"","to":""},{"cod":"U080154LN302","desc":"Entrada de cables a caseta existente","ud":"ud","med":31418.53,"pu_ec":194.18,"venta_ppto":40388.62,"coste_sum_ppto":0,"coste_ejec_ppto":31418.53,"coste_otros_ppto":0,"coste_total_ppto":31418.53,"te":"3.09","ts":"","ti":"","to":""},{"cod":"US14URB100","desc":"Hito de hormigón","ud":"ud","med":17079.27,"pu_ec":29.58,"venta_ppto":14107.59,"coste_sum_ppto":0,"coste_ejec_ppto":10817.64,"coste_otros_ppto":0,"coste_total_ppto":17079.27,"te":"3.10","ts":"2.10","ti":"","to":""},{"cod":"UCP13ZYC00bda","desc":"Canalización 45T, ACERO 3``","ud":"m","med":54251.18,"pu_ec":269.9,"venta_ppto":60728.23,"coste_sum_ppto":0,"coste_ejec_ppto":42730.06,"coste_otros_ppto":0,"coste_total_ppto":54251.18,"te":"3.11","ts":"2.11","ti":"","to":""},{"cod":"US14MDT000N","desc":"DESBROCE DE MATORRALES O CORTE DE RAMAS A MANO O A MÁQUINA","ud":"m","med":708.7,"pu_ec":2.36,"venta_ppto":1180.78,"coste_sum_ppto":0,"coste_ejec_ppto":708.7,"coste_otros_ppto":0,"coste_total_ppto":708.7,"te":"3.11","ts":"","ti":"","to":""},{"cod":"US14URB000N","desc":"SUPLEMENTO PARA CANALIZACIÓN CON REPOSICIÓN DE PAVIMENTO","ud":"m","med":2578.81,"pu_ec":11.67,"venta_ppto":2918.21,"coste_sum_ppto":0,"coste_ejec_ppto":2578.81,"coste_otros_ppto":0,"coste_total_ppto":2578.81,"te":"3.11","ts":"","ti":"","to":""},{"cod":"USP13CYA005N","desc":"RECRECIDO DE ARQUETA DE REGISTRO EXISTENTE","ud":"ud","med":15365.57,"pu_ec":107.87,"venta_ppto":16827.23,"coste_sum_ppto":0,"coste_ejec_ppto":15365.57,"coste_otros_ppto":0,"coste_total_ppto":15365.57,"te":"3.11","ts":"","ti":"","to":""},{"cod":"USP13CYA007N","desc":"RECONSTRUCCIÓN DE CÁMARA DE REGISTRO EXISTENTE","ud":"ud","med":15168.58,"pu_ec":126.11,"venta_ppto":19420.48,"coste_sum_ppto":0,"coste_ejec_ppto":15168.58,"coste_otros_ppto":0,"coste_total_ppto":15168.58,"te":"3.11","ts":"","ti":"","to":""},{"cod":"US13TUB08562N","desc":"SUMINISTRO E INSTALACIÓN DE PROTECCIÓN DE CABLE AÉREO","ud":"ud","med":872.11,"pu_ec":13.76,"venta_ppto":701.99,"coste_sum_ppto":0,"coste_ejec_ppto":468.52,"coste_otros_ppto":0,"coste_total_ppto":872.11,"te":"3.12","ts":"2.12","ti":"","to":""},{"cod":"US13CAT002N","desc":"CATA Y REPARACIÓN DE SUBCONDUCTO EXISTENTE EN ZANJA","ud":"ud","med":4317.7,"pu_ec":33.22,"venta_ppto":1660.96,"coste_sum_ppto":0,"coste_ejec_ppto":4178.05,"coste_otros_ppto":0,"coste_total_ppto":4317.7,"te":"3.12","ts":"2.12","ti":"","to":""},{"cod":"US13CAT000N","desc":"CATA Y REPARACIÓN DE SUBCONDUCTO EXISTENTE EN CANALIZACIÓN HORMIGONADA","ud":"ud","med":10724.43,"pu_ec":118.21,"venta_ppto":11821.27,"coste_sum_ppto":0,"coste_ejec_ppto":10445.13,"coste_otros_ppto":0,"coste_total_ppto":10724.43,"te":"3.12","ts":"2.12","ti":"","to":""},{"cod":"US13TUB08551N","desc":"PROTECCIÓN DE CABLE DE FIBRA ÓPTICA","ud":"ud","med":19607.07,"pu_ec":23.29,"venta_ppto":21659.17,"coste_sum_ppto":0,"coste_ejec_ppto":6619.62,"coste_otros_ppto":0,"coste_total_ppto":19607.07,"te":"3.12","ts":"2.12","ti":"","to":""},{"cod":"US13CYA0704N","desc":"EJECUCIÓN DE TALADRO DE 110 MM","ud":"ud","med":7008.3,"pu_ec":89.65,"venta_ppto":10040.7,"coste_sum_ppto":0,"coste_ejec_ppto":6643.35,"coste_otros_ppto":0,"coste_total_ppto":7008.3,"te":"3.13","ts":"2.13","ti":"","to":""},{"cod":"UG01CYA085N","desc":"SUMINISTRO Y MONTAJE DE PELDAÑO DE ACERO","ud":"ud","med":8947.38,"pu_ec":10.73,"venta_ppto":8153.44,"coste_sum_ppto":0,"coste_ejec_ppto":5409.58,"coste_otros_ppto":0,"coste_total_ppto":8947.38,"te":"3.13","ts":"2.13","ti":"","to":""},{"cod":"US13CYA071aN","desc":"SELLADO DE PASAMUROS","ud":"ud","med":1631.38,"pu_ec":18.04,"venta_ppto":2020.23,"coste_sum_ppto":0,"coste_ejec_ppto":797.2,"coste_otros_ppto":0,"coste_total_ppto":1631.38,"te":"3.13","ts":"2.13","ti":"","to":""},{"cod":"US14DRE010","desc":"Cuneta trapecial en pie de rellenos","ud":"m","med":13005.81,"pu_ec":23.47,"venta_ppto":12908.15,"coste_sum_ppto":0,"coste_ejec_ppto":13005.81,"coste_otros_ppto":0,"coste_total_ppto":13005.81,"te":"3.14","ts":"","ti":"","to":""},{"cod":"U080154N206","desc":"Cuneta trapecial en pie de rellenos (0,5 m en base, 1m superior y 0,35 m profundidad)","ud":"m","med":13005.81,"pu_ec":11.52,"venta_ppto":6333.47,"coste_sum_ppto":0,"coste_ejec_ppto":13005.81,"coste_otros_ppto":0,"coste_total_ppto":13005.81,"te":"3.14","ts":"","ti":"","to":""},{"cod":"US14DRE020","desc":"Rotura y reposición de cuneta","ud":"m","med":23739.91,"pu_ec":85.27,"venta_ppto":21318.66,"coste_sum_ppto":0,"coste_ejec_ppto":23739.91,"coste_otros_ppto":0,"coste_total_ppto":23739.91,"te":"3.14","ts":"","ti":"","to":""},{"cod":"US13BDJ019","desc":"Bandeja de rejilla 200x60 mm bajo falso suelo","ud":"m","med":49371.95,"pu_ec":59.02,"venta_ppto":64563.92,"coste_sum_ppto":0,"coste_ejec_ppto":43260.86,"coste_otros_ppto":0,"coste_total_ppto":49371.95,"te":"3.15","ts":"2.15","ti":"","to":""},{"cod":"US13CAN050","desc":"Canaleta PVC de 30x15 mm con tapa","ud":"m","med":8580.2,"pu_ec":6.16,"venta_ppto":5946.85,"coste_sum_ppto":0,"coste_ejec_ppto":6244.32,"coste_otros_ppto":0,"coste_total_ppto":8580.2,"te":"3.16","ts":"2.16","ti":"","to":""},{"cod":"U080154LN301","desc":"Adaptación sala cuarto convencional existente","ud":"ud","med":269708.92,"pu_ec":33079.46,"venta_ppto":396953.51,"coste_sum_ppto":0,"coste_ejec_ppto":193853.59,"coste_otros_ppto":0,"coste_total_ppto":269708.92,"te":"3.17","ts":"2.17","ti":"","to":""},{"cod":"UCP12CAB40bdc","desc":"Cable 32FO PKP tendido en monotubo","ud":"m","med":79612.8,"pu_ec":2.13,"venta_ppto":68012.78,"coste_sum_ppto":0,"coste_ejec_ppto":41479.04,"coste_otros_ppto":0,"coste_total_ppto":79612.8,"te":"3.18","ts":"2.18","ti":"","to":""},{"cod":"US13TUB085","desc":"Tubo de polietileno de alta densidad de 40 mm","ud":"m","med":206406.62,"pu_ec":1.46,"venta_ppto":177257.19,"coste_sum_ppto":0,"coste_ejec_ppto":100551.01,"coste_otros_ppto":0,"coste_total_ppto":206406.62,"te":"3.19","ts":"2.19","ti":"","to":""},{"cod":"US13TUB087N","desc":"Tubo de polietileno de alta densidad de 40 mm","ud":"m","med":159491.38,"pu_ec":2.25,"venta_ppto":141693.3,"coste_sum_ppto":0,"coste_ejec_ppto":104490.12,"coste_otros_ppto":0,"coste_total_ppto":159491.38,"te":"3.19","ts":"2.19","ti":"","to":""},{"cod":"US13TUB08514N","desc":"TENDIDO DE MONOTUBO GRAPADO A MURO O TECHO","ud":"m","med":24.88,"pu_ec":1.46,"venta_ppto":21.93,"coste_sum_ppto":0,"coste_ejec_ppto":24.88,"coste_otros_ppto":0,"coste_total_ppto":24.88,"te":"3.19","ts":"2.19","ti":"","to":""},{"cod":"US13TUB08522N","desc":"RETIRADA DE CABLE DE FIBRA ÓPTICA","ud":"m","med":4652.3,"pu_ec":1.5,"venta_ppto":8390.6,"coste_sum_ppto":0,"coste_ejec_ppto":4652.3,"coste_otros_ppto":0,"coste_total_ppto":4652.3,"te":"3.20","ts":"","ti":"","to":""},{"cod":"US11ABT000N","desc":"SUMINISTRO CONJUNTO DE HERRAJES PARA RETENCIÓN","ud":"ud","med":21985.93,"pu_ec":18.87,"venta_ppto":4434.44,"coste_sum_ppto":0,"coste_ejec_ppto":5577.06,"coste_otros_ppto":0,"coste_total_ppto":21985.93,"te":"3.21","ts":"2.21","ti":"","to":""},{"cod":"US11ABT001N","desc":"SUMINISTRO CONJUNTO DE HERRAJES PARA SUSPENSIÓN","ud":"ud","med":13890.89,"pu_ec":22.11,"venta_ppto":5195.53,"coste_sum_ppto":0,"coste_ejec_ppto":5577.06,"coste_otros_ppto":0,"coste_total_ppto":13890.89,"te":"3.21","ts":"2.21","ti":"","to":""},{"cod":"US13TUB090N","desc":"BAJADA DE CABLE ÓPTICO","ud":"ud","med":1486.9,"pu_ec":142.81,"venta_ppto":2142.1,"coste_sum_ppto":0,"coste_ejec_ppto":1067.95,"coste_otros_ppto":0,"coste_total_ppto":1486.9,"te":"3.18","ts":"2.18","ti":"","to":""},{"cod":"UCP12CAB32PKCPN","desc":"CABLE DE 32 FIBRAS ÓPTICAS MONOMODO G.652 CONCUBIERTA PKCP","ud":"m","med":70814.48,"pu_ec":3.91,"venta_ppto":46961.21,"coste_sum_ppto":0,"coste_ejec_ppto":45565.76,"coste_otros_ppto":0,"coste_total_ppto":70814.48,"te":"3.18","ts":"2.18","ti":"","to":""},{"cod":"US13TUB086N","desc":"SUMINISTRO DE MONOTUBO IGNÍFUGO","ud":"m","med":12483.08,"pu_ec":10.89,"venta_ppto":21771.29,"coste_sum_ppto":0,"coste_ejec_ppto":3456.59,"coste_otros_ppto":0,"coste_total_ppto":12483.08,"te":"3.19","ts":"2.19","ti":"","to":""},{"cod":"UCP12CAB40ddc","desc":"Cable 96FO PKP tendido en monotubo","ud":"m","med":118652.0,"pu_ec":3.52,"venta_ppto":140793.66,"coste_sum_ppto":0,"coste_ejec_ppto":25924.4,"coste_otros_ppto":0,"coste_total_ppto":118652.0,"te":"3.18","ts":"2.18","ti":"","to":""},{"cod":"UCP12CAB96TKTN","desc":"Cable 96 TKT tendido en subconducto","ud":"m","med":13541.0,"pu_ec":4.04,"venta_ppto":16148.54,"coste_sum_ppto":0,"coste_ejec_ppto":2592.44,"coste_otros_ppto":0,"coste_total_ppto":13541.0,"te":"3.18","ts":"2.18","ti":"","to":""},{"cod":"MNC22RFO100N","desc":"KIT DE SELLADO DE PUERTO CIRCULAR","ud":"","med":2933.94,"pu_ec":8.25,"venta_ppto":990.5,"coste_sum_ppto":0,"coste_ejec_ppto":834.72,"coste_otros_ppto":0,"coste_total_ppto":2933.94,"te":"3.22","ts":"2.22","ti":"","to":""},{"cod":"US13TUB08561N","desc":"UNIDAD DE ALMACENAMIENTO DE CABLE ÓPTICO","ud":"","med":908.92,"pu_ec":30.57,"venta_ppto":611.31,"coste_sum_ppto":0,"coste_ejec_ppto":370.99,"coste_otros_ppto":0,"coste_total_ppto":908.92,"te":"3.22","ts":"2.22","ti":"","to":""},{"cod":"UCP22RFO04ab","desc":"Empalme de segregación a 1 cable 32 FO","ud":"ud","med":30257.5,"pu_ec":470.21,"venta_ppto":16457.28,"coste_sum_ppto":0,"coste_ejec_ppto":30257.5,"coste_otros_ppto":0,"coste_total_ppto":30257.5,"te":"3.22","ts":"2.22","ti":"","to":""},{"cod":"UCP22RFO04bd","desc":"EMPALME DE SEGREGACIÓN A DOS CABLES DE 96 FIBRAS","ud":"","med":6460.0,"pu_ec":2364.23,"venta_ppto":11821.16,"coste_sum_ppto":0,"coste_ejec_ppto":6460.0,"coste_otros_ppto":0,"coste_total_ppto":6460.0,"te":"3.22","ts":"2.22","ti":"","to":""},{"cod":"UCP22RFO03d","desc":"Empalme en recto cables 96 FO","ud":"ud","med":8816.0,"pu_ec":1182.17,"venta_ppto":9457.38,"coste_sum_ppto":0,"coste_ejec_ppto":8816.0,"coste_otros_ppto":0,"coste_total_ppto":8816.0,"te":"3.22","ts":"2.22","ti":"","to":""},{"cod":"UCP22RFO02ad","desc":"CAJA DE EMPALME Y SEGREGACIÓN  A 1 CABLE DE 96 FIBRAS ÓPTICAS","ud":"ud","med":3283.39,"pu_ec":632.94,"venta_ppto":3164.71,"coste_sum_ppto":0,"coste_ejec_ppto":154.58,"coste_otros_ppto":0,"coste_total_ppto":3283.39,"te":"3.22","ts":"2.22","ti":"","to":""},{"cod":"UCP22RFO01d","desc":"Caja empalme recto 96 FO","ud":"ud","med":5648.54,"pu_ec":550.37,"venta_ppto":4402.93,"coste_sum_ppto":0,"coste_ejec_ppto":247.32,"coste_otros_ppto":0,"coste_total_ppto":5648.54,"te":"3.22","ts":"2.22","ti":"","to":""},{"cod":"UC2020RCD03N","desc":"Switch acceso IPMM 12 puertos","ud":"ud","med":82078.56,"pu_ec":1342.54,"venta_ppto":67127.2,"coste_sum_ppto":0,"coste_ejec_ppto":23781.67,"coste_otros_ppto":0,"coste_total_ppto":82078.56,"te":"3.23","ts":"2.23","ti":"","to":""},{"cod":"UC2020RCD04N","desc":"Switch acceso IPMM 24 puertos","ud":"ud","med":82078.56,"pu_ec":1735.91,"venta_ppto":86795.58,"coste_sum_ppto":0,"coste_ejec_ppto":23781.67,"coste_otros_ppto":0,"coste_total_ppto":82078.56,"te":"3.23","ts":"2.23","ti":"","to":""},{"cod":"UC2020RCD06N","desc":"Switch acceso IPMM industrial 12 puertos","ud":"ud","med":60129.3,"pu_ec":1290.1,"venta_ppto":64504.75,"coste_sum_ppto":0,"coste_ejec_ppto":23781.67,"coste_otros_ppto":0,"coste_total_ppto":60129.3,"te":"3.23","ts":"2.23","ti":"","to":""},{"cod":"UC2020RCD07N","desc":"Switch acceso IPMM industrial 8 puertos","ud":"ud","med":60129.3,"pu_ec":1132.75,"venta_ppto":56637.4,"coste_sum_ppto":0,"coste_ejec_ppto":23781.67,"coste_otros_ppto":0,"coste_total_ppto":60129.3,"te":"3.23","ts":"2.23","ti":"","to":""},{"cod":"UC2020RCD08N","desc":"Switch acceso IPMM industrial 4 puertos","ud":"ud","med":60129.3,"pu_ec":975.4,"venta_ppto":48770.05,"coste_sum_ppto":0,"coste_ejec_ppto":23781.67,"coste_otros_ppto":0,"coste_total_ppto":60129.3,"te":"3.23","ts":"2.23","ti":"","to":""},{"cod":"UC2020RCD09N","desc":"Switch acceso IPMM VF","ud":"ud","med":75189.16,"pu_ec":3696.19,"venta_ppto":184809.67,"coste_sum_ppto":0,"coste_ejec_ppto":23781.67,"coste_otros_ppto":0,"coste_total_ppto":75189.16,"te":"3.23","ts":"2.23","ti":"","to":""},{"cod":"UC2020RCD10N","desc":"Nodo IPMM Legacy","ud":"ud","med":303831.85,"pu_ec":7193.14,"venta_ppto":0,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":0,"coste_total_ppto":0,"te":"3.24","ts":"2.24","ti":"","to":""},{"cod":"UC22SFO010","desc":"Subbastidor para UCC, UMR y USO","ud":"ud","med":1581.19,"pu_ec":1125.03,"venta_ppto":1125.03,"coste_sum_ppto":0,"coste_ejec_ppto":284.71,"coste_otros_ppto":0,"coste_total_ppto":1581.19,"te":"3.25","ts":"2.25","ti":"","to":""},{"cod":"UC22SFO050","desc":"Unidad de medidas reflectométricas (UMR)","ud":"ud","med":9061.33,"pu_ec":15128.99,"venta_ppto":15128.99,"coste_sum_ppto":0,"coste_ejec_ppto":284.72,"coste_otros_ppto":0,"coste_total_ppto":9061.33,"te":"3.25","ts":"2.26","ti":"","to":""},{"cod":"UC22SFO060","desc":"Unidad de seleccion óptica (USO) 8 salidas","ud":"ud","med":6563.8,"pu_ec":10107.21,"venta_ppto":10107.21,"coste_sum_ppto":0,"coste_ejec_ppto":284.72,"coste_otros_ppto":0,"coste_total_ppto":6563.8,"te":"3.25","ts":"2.27","ti":"","to":""},{"cod":"UC22SFO080","desc":"Unidad de control y comunicaciones (UCC)","ud":"ud","med":1295.97,"pu_ec":1564.36,"venta_ppto":1564.36,"coste_sum_ppto":0,"coste_ejec_ppto":284.71,"coste_otros_ppto":0,"coste_total_ppto":1295.97,"te":"3.25","ts":"2.28","ti":"","to":""},{"cod":"UC22SFO110","desc":"Activación del SSFO","ud":"ud","med":13393.45,"pu_ec":38088.33,"venta_ppto":38088.33,"coste_sum_ppto":0,"coste_ejec_ppto":13393.45,"coste_otros_ppto":0,"coste_total_ppto":13393.45,"te":"3.26","ts":"","ti":"","to":""},{"cod":"UC22ENE002_1","desc":"Bastidor 19\" misceláneo 2000x600x600 mm","ud":"ud","med":48404.28,"pu_ec":738.63,"venta_ppto":36931.35,"coste_sum_ppto":0,"coste_ejec_ppto":1854.28,"coste_otros_ppto":0,"coste_total_ppto":48404.28,"te":"3.29","ts":"2.29","ti":"","to":""},{"cod":"UC22ENE005_1","desc":"Subbastidor de rectificadores para SAI","ud":"ud","med":6326.94,"pu_ec":135.86,"venta_ppto":6792.84,"coste_sum_ppto":0,"coste_ejec_ppto":927.14,"coste_otros_ppto":0,"coste_total_ppto":6326.94,"te":"3.29","ts":"2.29","ti":"","to":""},{"cod":"UC22ENE006_1","desc":"Subbastidor de órganos comunes SAI","ud":"ud","med":9538.89,"pu_ec":232.19,"venta_ppto":11609.29,"coste_sum_ppto":0,"coste_ejec_ppto":927.14,"coste_otros_ppto":0,"coste_total_ppto":9538.89,"te":"3.29","ts":"2.29","ti":"","to":""},{"cod":"UC22ENE010_1","desc":"Módulo de control y alarmas SAI","ud":"ud","med":14426.64,"pu_ec":350.72,"venta_ppto":17536.23,"coste_sum_ppto":0,"coste_ejec_ppto":927.14,"coste_otros_ppto":0,"coste_total_ppto":14426.64,"te":"3.29","ts":"2.29","ti":"","to":""},{"cod":"UC22ENE011_1","desc":"Módulo de distribución DC 48Vcc SAI","ud":"ud","med":14007.69,"pu_ec":280.38,"venta_ppto":14019.2,"coste_sum_ppto":0,"coste_ejec_ppto":927.14,"coste_otros_ppto":0,"coste_total_ppto":14007.69,"te":"3.29","ts":"2.29","ti":"","to":""},{"cod":"UC22ENE012_1","desc":"Módulo de protección de baterías SAI","ud":"ud","med":8794.09,"pu_ec":302.53,"venta_ppto":15126.32,"coste_sum_ppto":0,"coste_ejec_ppto":927.14,"coste_otros_ppto":0,"coste_total_ppto":8794.09,"te":"3.29","ts":"2.29","ti":"","to":""},{"cod":"UC22ENE015_1","desc":"Módulo rectificador (48V/2500W-50A) SAI","ud":"ud","med":14426.64,"pu_ec":287.81,"venta_ppto":14390.3,"coste_sum_ppto":0,"coste_ejec_ppto":927.14,"coste_otros_ppto":0,"coste_total_ppto":14426.64,"te":"3.29","ts":"2.29","ti":"","to":""},{"cod":"UC22ENE020_1","desc":"Sistema de onduladores 230 Vca SAI","ud":"ud","med":121792.97,"pu_ec":2248.29,"venta_ppto":112414.52,"coste_sum_ppto":0,"coste_ejec_ppto":3090.47,"coste_otros_ppto":0,"coste_total_ppto":121792.97,"te":"3.29","ts":"2.29","ti":"","to":""},{"cod":"UC22ENE025_1","desc":"Sistema de alimentación ininterrumpida","ud":"ud","med":91069.97,"pu_ec":4204.86,"venta_ppto":210243.06,"coste_sum_ppto":0,"coste_ejec_ppto":3090.47,"coste_otros_ppto":0,"coste_total_ppto":91069.97,"te":"3.29","ts":"2.29","ti":"","to":""},{"cod":"UC22ENE030_1","desc":"Batería de plomo hermético 100 Ah en rack","ud":"ud","med":3812.06,"pu_ec":699.14,"venta_ppto":3495.72,"coste_sum_ppto":0,"coste_ejec_ppto":92.71,"coste_otros_ppto":0,"coste_total_ppto":3812.06,"te":"3.29","ts":"2.29","ti":"","to":""},{"cod":"UC22ENE038_1","desc":"Batería de plomo hermético 190 Ah en rack","ud":"ud","med":95112.85,"pu_ec":1318.71,"venta_ppto":94947.47,"coste_sum_ppto":0,"coste_ejec_ppto":1335.08,"coste_otros_ppto":0,"coste_total_ppto":95112.85,"te":"3.29","ts":"2.29","ti":"","to":""},{"cod":"UETTELCO01N","desc":"ENCARGADOS DE TRABAJOS (TELECOMUNICACIONES)","ud":"h","med":208080.0,"pu_ec":57.69,"venta_ppto":313830.42,"coste_sum_ppto":208080.0,"coste_ejec_ppto":0,"coste_otros_ppto":0,"coste_total_ppto":208080.0,"te":"","ts":"","ti":"1.01","to":""},{"cod":"UETTELCO02N","desc":"JORNADA DE ALQUILER DE VAGONETA","ud":"d","med":77860.27,"pu_ec":1268.49,"venta_ppto":126849.24,"coste_sum_ppto":77860.27,"coste_ejec_ppto":0,"coste_otros_ppto":0,"coste_total_ppto":77860.27,"te":"","ts":"","ti":"1.02","to":""},{"cod":"UETTELCO03N","desc":"ENCARGADOS DE TRABAJOS (IISS)","ud":"h","med":32130.0,"pu_ec":59.68,"venta_ppto":50131.09,"coste_sum_ppto":32130.0,"coste_ejec_ppto":0,"coste_otros_ppto":0,"coste_total_ppto":32130.0,"te":"","ts":"","ti":"1.03","to":""},{"cod":"UETTELCO04N","desc":"ENCARGADOS DE TRABAJOS (SSEE)","ud":"h","med":22950.0,"pu_ec":91.7,"venta_ppto":55017.48,"coste_sum_ppto":22950.0,"coste_ejec_ppto":0,"coste_otros_ppto":0,"coste_total_ppto":22950.0,"te":"","ts":"","ti":"1.04","to":""},{"cod":"UETTELCO05N","desc":"ENCARGADOS DE TRABAJOS (CATENARIA)","ud":"h","med":3825.0,"pu_ec":57.66,"venta_ppto":5765.57,"coste_sum_ppto":3825.0,"coste_ejec_ppto":0,"coste_otros_ppto":0,"coste_total_ppto":3825.0,"te":"","ts":"","ti":"1.05","to":""},{"cod":"UG10DOC001N","desc":"ISA o ASBO","ud":"ud","med":2872.62,"pu_ec":3400.43,"venta_ppto":3400.43,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":2872.62,"coste_total_ppto":2872.62,"te":"","ts":"","ti":"","to":"4.01"},{"cod":"UG10DOC002N","desc":"INTEROPERABILIDAD POR NOBO","ud":"ud","med":13936.88,"pu_ec":16497.6,"venta_ppto":16497.6,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":13936.88,"coste_total_ppto":13936.88,"te":"","ts":"","ti":"","to":"4.01"},{"cod":"UG10DOC003N","desc":"AS BUILT","ud":"ud","med":2625.14,"pu_ec":3107.47,"venta_ppto":3107.47,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":2625.14,"coste_total_ppto":2625.14,"te":"","ts":"","ti":"","to":"4.01"},{"cod":"G0613N001","desc":"Clasificación y recogida selectiva","ud":"t","med":335.04,"pu_ec":2.97,"venta_ppto":396.59,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":335.04,"coste_total_ppto":335.04,"te":"","ts":"","ti":"","to":"6.01"},{"cod":"G0613N002","desc":"Gestión de RNP no pétreos","ud":"t","med":50.91,"pu_ec":14.46,"venta_ppto":60.26,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":50.91,"coste_total_ppto":50.91,"te":"","ts":"","ti":"","to":"6.01"},{"cod":"G0613N003","desc":"Gestión de RNP pétreos","ud":"t","med":706.51,"pu_ec":6.47,"venta_ppto":836.33,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":706.51,"coste_total_ppto":706.51,"te":"","ts":"","ti":"","to":"6.01"},{"cod":"G0613N004N","desc":"Gestión de residuos peligrosos","ud":"t","med":24.74,"pu_ec":366.1,"venta_ppto":29.29,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":24.74,"coste_total_ppto":24.74,"te":"","ts":"","ti":"","to":"6.01"},{"cod":"G0613N006N","desc":"CONTRATACIÓN GESTOR DE RESIDUOS AUTORIZADO","ud":"ud","med":1067.34,"pu_ec":1263.45,"venta_ppto":1263.45,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":1067.34,"coste_total_ppto":1067.34,"te":"","ts":"","ti":"","to":"6.01"},{"cod":"G0613N007N","desc":"INSTALACIÓN DE PUNTO DE LIMPIEZA CANALETAS DE HORMIGONERAS","ud":"ud","med":1583.93,"pu_ec":187.5,"venta_ppto":1874.96,"coste_sum_ppto":0,"coste_ejec_ppto":0.0,"coste_otros_ppto":1583.93,"coste_total_ppto":1583.93,"te":"","ts":"","ti":"","to":"6.01"},{"cod":"UG25IAM010","desc":"Jalonamiento temporal de protección GSM-R","ud":"m","med":156.75,"pu_ec":0.37,"venta_ppto":185.55,"coste_sum_ppto":0,"coste_ejec_ppto":0,"coste_otros_ppto":156.75,"coste_total_ppto":156.75,"te":"","ts":"","ti":"","to":"7.01"},{"cod":"UC22RFO008","desc":"Armario repartidor con 192 conectores y 128 bandejas de fusión","ud":"ud","med":33350.73,"pu_ec":6011.55,"venta_ppto":30057.76,"coste_sum_ppto":0,"coste_ejec_ppto":772.62,"coste_otros_ppto":0,"coste_total_ppto":33350.73,"te":"3.30","ts":"2.30","ti":"","to":""},{"cod":"UC22RFO009","desc":"Unidad de interconexión de 72 conectores para repartidor óptico","ud":"ud","med":39660.37,"pu_ec":776.34,"venta_ppto":38817.22,"coste_sum_ppto":0,"coste_ejec_ppto":1545.23,"coste_otros_ppto":0,"coste_total_ppto":39660.37,"te":"3.30","ts":"2.31","ti":"","to":""},{"cod":"UCP22RFO06d","desc":"Conectorización 32 FO a repartidor","ud":"ud","med":163438.0,"pu_ec":565.77,"venta_ppto":143140.4,"coste_sum_ppto":0,"coste_ejec_ppto":163438.0,"coste_otros_ppto":0,"coste_total_ppto":163438.0,"te":"3.30","ts":"2.32","ti":"","to":""},{"cod":"UCP22RFO07i","desc":"Medidas ópticas de reflectometría de 1 fibras","ud":"ud","med":58732.8,"pu_ec":16.99,"venta_ppto":150072.91,"coste_sum_ppto":0,"coste_ejec_ppto":58732.8,"coste_otros_ppto":0,"coste_total_ppto":58732.8,"te":"3.30","ts":"","ti":"","to":""},{"cod":"UC22RFO008AN","desc":"Repartidor mural ETSI 750x600x300","ud":"ud","med":5302.84,"pu_ec":612.88,"venta_ppto":6128.8,"coste_sum_ppto":0,"coste_ejec_ppto":927.14,"coste_otros_ppto":0,"coste_total_ppto":5302.84,"te":"3.30","ts":"2.33","ti":"","to":""},{"cod":"UC22RFO008BN","desc":"Repartidor mural ETSI 925x600x300","ud":"ud","med":75837.58,"pu_ec":629.75,"venta_ppto":86275.48,"coste_sum_ppto":0,"coste_ejec_ppto":12701.82,"coste_otros_ppto":0,"coste_total_ppto":75837.58,"te":"3.30","ts":"2.33","ti":"","to":""},{"cod":"UC22RFO008CN","desc":"Subastidor de repartidor óptico para 24 FO","ud":"ud","med":1062.25,"pu_ec":281.14,"venta_ppto":1405.69,"coste_sum_ppto":0,"coste_ejec_ppto":154.52,"coste_otros_ppto":0,"coste_total_ppto":1062.25,"te":"3.30","ts":"2.34","ti":"","to":""},{"cod":"UC22RFO008DN","desc":"Subastidor de repartidor óptico para 72 FO","ud":"ud","med":19804.35,"pu_ec":371.1,"venta_ppto":21152.79,"coste_sum_ppto":0,"coste_ejec_ppto":1761.57,"coste_otros_ppto":0,"coste_total_ppto":19804.35,"te":"3.30","ts":"2.34","ti":"","to":""},{"cod":"UC22RFO008EN","desc":"Subastidor de repartidor óptico para 120 FO","ud":"ud","med":37372.97,"pu_ec":472.31,"venta_ppto":35895.64,"coste_sum_ppto":0,"coste_ejec_ppto":2348.75,"coste_otros_ppto":0,"coste_total_ppto":37372.97,"te":"3.30","ts":"2.34","ti":"","to":""},{"cod":"UCP22RFO07iN","desc":"Medidas ópticas de polarización (PMD)","ud":"ud","med":16416.0,"pu_ec":30.94,"venta_ppto":53458.05,"coste_sum_ppto":0,"coste_ejec_ppto":16416.0,"coste_otros_ppto":0,"coste_total_ppto":16416.0,"te":"3.30","ts":"","ti":"","to":""},{"cod":"UC22RFO017aN","desc":"BANDEJA DE EMPALME/CONECTORES PARA REPARTIDOR","ud":"ud","med":32460.44,"pu_ec":66.0,"venta_ppto":18611.95,"coste_sum_ppto":0,"coste_ejec_ppto":1743.02,"coste_otros_ppto":0,"coste_total_ppto":32460.44,"te":"3.30","ts":"2.35","ti":"","to":""},{"cod":"UC22RFO517","desc":"ARMARIO DE 19'' DE PROPÓSITO GENERAL","ud":"ud","med":33438.98,"pu_ec":523.43,"venta_ppto":35593.45,"coste_sum_ppto":0,"coste_ejec_ppto":2101.52,"coste_otros_ppto":0,"coste_total_ppto":33438.98,"te":"3.30","ts":"2.36","ti":"","to":""},{"cod":"UC22RFO008N","desc":"ARMARIO REPARTIDOR PARA EMPALME","ud":"ud","med":25430.4,"pu_ec":2452.95,"venta_ppto":26982.42,"coste_sum_ppto":0,"coste_ejec_ppto":339.95,"coste_otros_ppto":0,"coste_total_ppto":25430.4,"te":"3.30","ts":"2.30","ti":"","to":""},{"cod":"UC22RFO017N","desc":"UNIDAD DE EMPALME DE 32 BANDEJAS EN CIRCUITO INDIVIDUAL","ud":"ud","med":16507.17,"pu_ec":655.2,"venta_ppto":29483.85,"coste_sum_ppto":0,"coste_ejec_ppto":1192.04,"coste_otros_ppto":0,"coste_total_ppto":16507.17,"te":"3.30","ts":"2.37","ti":"","to":""},{"cod":"UC22RFO009N","desc":"MODULO DE INTERCONEXIÓN EQUIPADO CON 6 BANDEJAS DE 12 CONECTORES.","ud":"ud","med":47592.45,"pu_ec":776.34,"venta_ppto":46580.66,"coste_sum_ppto":0,"coste_ejec_ppto":1854.28,"coste_otros_ppto":0,"coste_total_ppto":47592.45,"te":"3.30","ts":"2.38","ti":"","to":""}];
 const TASKS_PPTO = [{"cod":"1.01","desc":"ENCARGADOS DE TRABAJOS (TELECOMUNICACIONES)","venta_ppto":313830.42,"coste_ppto":208080.0},{"cod":"1.02","desc":"JORNADA DE ALQUILER DE VAGONETA","venta_ppto":126849.24,"coste_ppto":77860.27},{"cod":"1.03","desc":"ENCARGADOS DE TRABAJOS (IISS)","venta_ppto":50131.09,"coste_ppto":32130.0},{"cod":"1.04","desc":"ENCARGADOS DE TRABAJOS (SSEE)","venta_ppto":55017.48,"coste_ppto":22950.0},{"cod":"1.05","desc":"ENCARGADOS DE TRABAJOS (CATENARIA)","venta_ppto":5765.57,"coste_ppto":3825.0},{"cod":"2.01","desc":"SUMNIISTROS CANALETAS","venta_ppto":217204.81,"coste_ppto":224012.03},{"cod":"2.02","desc":"SUMNIISTROS ARQUETAS DE LADRILLO INCLUIDO TAPAS DE HORMIGON","venta_ppto":27408.04,"coste_ppto":25555.95},{"cod":"2.03","desc":"SUMNIISTROS ARQUETAS PREFABRICADAS INCLUIDO TAPAS DE HORMIGON","venta_ppto":224583.56,"coste_ppto":196431.69},{"cod":"2.04","desc":"SUMNIISTROS DE TUBERIA PVC PARA DRENAJE","venta_ppto":649.51,"coste_ppto":848.01},{"cod":"2.06","desc":"SUMINISTRO DE TUBERIA POLIETILENO PARA CANALIZACION","venta_ppto":210085.54,"coste_ppto":269519.62},{"cod":"2.07","desc":"SUMINISTRO DE TUBERIA PARA TOPO","venta_ppto":0.0,"coste_ppto":0.0},{"cod":"2.08","desc":"SUMINSITRO DE TUBO DE ACERO Y PERCHAS","venta_ppto":22430.82,"coste_ppto":16528.04},{"cod":"2.10","desc":"SUMINISTRO DE HITO PREFABRICADO","venta_ppto":5172.15,"coste_ppto":6261.63},{"cod":"2.11","desc":"SUMINISTRO DE TUBO DE ACERO 3\" PARA CANAÑIZACION,","venta_ppto":12896.63,"coste_ppto":11521.13},{"cod":"2.12","desc":"SUMINISTRO DE MATERIAL PARA PROTECCION DE CABLES Y FIBRA","venta_ppto":15033.18,"coste_ppto":13809.99},{"cod":"2.13","desc":"SUMNISTRO DE MATERIAL PARA EJECUCION DE TALADRO, PELDAÑOS Y PASAMUROS","venta_ppto":4779.74,"coste_ppto":4736.93},{"cod":"2.15","desc":"SUMINISTRO DE REJILLA PARA FALSO TECHO","venta_ppto":7991.49,"coste_ppto":6111.08},{"cod":"2.16","desc":"SUMINISTRO DE CANALETA PVC","venta_ppto":1618.97,"coste_ppto":2335.88},{"cod":"2.17","desc":"SUMNISTROS PARA EDIFICIOS TECNICOS","venta_ppto":111642.73,"coste_ppto":75855.33},{"cod":"2.18","desc":"SUMNISTRO DE FIBRA OPTICA","venta_ppto":173013.31,"coste_ppto":167477.59},{"cod":"2.19","desc":"SUMNISTRO DE TUBO DE POLIETILENO PARA FIBRA OPTICA","venta_ppto":155512.63,"coste_ppto":169883.36},{"cod":"2.21","desc":"SUMINISTRO DE HERRAJES PARA RETNCION Y SUSPENSION","venta_ppto":6419.15,"coste_ppto":24722.71},{"cod":"2.22","desc":"SUMINISTRO DE EMPALMES, CAJAS  Y KIT DE SELLADO","venta_ppto":8296.36,"coste_ppto":11167.18},{"cod":"2.23","desc":"SUMNISTRO DE SWITCH","venta_ppto":435687.69,"coste_ppto":357287.08},{"cod":"2.24","desc":"SUMINISTRO DE NODO IPMM","venta_ppto":0.0,"coste_ppto":0.0},{"cod":"2.25","desc":"SUMNITRO DE SUBBASTIDOR ETSI","venta_ppto":922.46,"coste_ppto":1296.47},{"cod":"2.26","desc":"SUMNISTRO DE MODULOS UMR","venta_ppto":14653.62,"coste_ppto":8776.61},{"cod":"2.27","desc":"SUMINISTRO DE UNIDAD USO","venta_ppto":9668.79,"coste_ppto":6279.08},{"cod":"2.28","desc":"SUMNISTRO DE UNIDAD UCC","venta_ppto":1220.68,"coste_ppto":1011.25},{"cod":"2.29","desc":"SUMNISTRO DE SAI INCLUIDO BASTIDOR MODULOS DE CONTROL, DISTRIBUCION, PROTECCION BATERIAS ETC","venta_ppto":517988.44,"coste_ppto":412687.16},{"cod":"2.30","desc":"SUMNISTRO DE ARMARIO REPARTIDOR","venta_ppto":55983.15,"coste_ppto":57668.56},{"cod":"2.31","desc":"SUMNITRO DE UNIDAD DE INETRCONEXCION","venta_ppto":37304.83,"coste_ppto":38115.14},{"cod":"2.32","desc":"CONECTORIZACION","venta_ppto":0.0,"coste_ppto":0.0},{"cod":"2.33","desc":"SUMINISTRO DE REPARTIDOR MURAL","venta_ppto":76882.69,"coste_ppto":67511.47},{"cod":"2.34","desc":"SUMINISTRO DE SUBBASTIDORES","venta_ppto":54112.21,"coste_ppto":53974.73},{"cod":"2.35","desc":"SUMINISTRO DE BANDEJA DE EMPALME","venta_ppto":17612.55,"coste_ppto":30717.41},{"cod":"2.36","desc":"SUMINISTRO DE ARMARIO PROPOSITO GENERAL","venta_ppto":33356.53,"coste_ppto":31337.46},{"cod":"2.37","desc":"UNIDAD DE EMPALME DE BANDEJAS","venta_ppto":27354.72,"coste_ppto":15315.14},{"cod":"2.38","desc":"SUMNISTRO DE MODULOS DE INTERCONEXION","venta_ppto":44765.8,"coste_ppto":45738.17},{"cod":"3.01","desc":"EJECUCION MANO DE OBRA PROPIA DE CANALETAS","venta_ppto":331498.57,"coste_ppto":322321.2},{"cod":"3.02","desc":"EJECUCION DE ARQUETAS DE LADRILO","venta_ppto":19523.66,"coste_ppto":18204.36},{"cod":"3.03","desc":"EJECUCION DE ARQUETAS PREFABRICADAS","venta_ppto":194761.09,"coste_ppto":171439.32},{"cod":"3.04","desc":"EJECUCION DE TUBERIA PVC PARA DRENAJE","venta_ppto":1020.01,"coste_ppto":1331.75},{"cod":"3.05","desc":"EJECUCION DE ZANJA A MANO PARA TENDIDO DE CABLE","venta_ppto":126849.24,"coste_ppto":96355.75},{"cod":"3.06","desc":"EJECUCION DE CANALIZACION HORMIGONADA","venta_ppto":564965.56,"coste_ppto":903378.97},{"cod":"3.07","desc":"EJECUCION DE TOPO GSM-R","venta_ppto":240709.93,"coste_ppto":201300.0},{"cod":"3.08","desc":"EJECUCION DE TUBO DE ACERO Y PERCHAS PARA CABLES","venta_ppto":30685.56,"coste_ppto":24969.29},{"cod":"3.09","desc":"ENTRADA DE CABLE A CASETA EXISTENTE","venta_ppto":40388.62,"coste_ppto":31418.53},{"cod":"3.10","desc":"EJECUCION HITO PREFABRICADO","venta_ppto":8935.45,"coste_ppto":10817.64},{"cod":"3.11","desc":"EJECUCION DE CANALIZACION Y RECRECICO DE ARQUETAS EN PLACA DE HORMIGON INCLUIDO DESBROCE","venta_ppto":88178.29,"coste_ppto":76551.72},{"cod":"3.12","desc":"EEJCUCION  DE REPARACION Y PROTECCION DE CABLES","venta_ppto":20810.21,"coste_ppto":21711.32},{"cod":"3.13","desc":"EJECUCION DE TALADROS DE MUROS, PELDAÑOS Y PASAMUROS","venta_ppto":15434.63,"coste_ppto":12850.14},{"cod":"3.14","desc":"EJECUCIOND DE CUNETA, ROTURA Y REPOSICION","venta_ppto":49596.59,"coste_ppto":62757.34},{"cod":"3.15","desc":"EJECUCION DE REJILLA PARA FALSO TECHO","venta_ppto":56572.43,"coste_ppto":43260.86},{"cod":"3.16","desc":"EJECUCION DE CANALETA PVC","venta_ppto":4327.87,"coste_ppto":6244.32},{"cod":"3.17","desc":"EJECUCION DE EDIFICIOS TECNICOS","venta_ppto":285310.78,"coste_ppto":193853.59},{"cod":"3.18","desc":"EJECUCION DE TENDIDO DE FIBRA OPTICA","venta_ppto":101044.98,"coste_ppto":116629.59},{"cod":"3.19","desc":"EJECUCION DE TENDIDO DE TUBERIA DE POLIETILENO PARA FIBRA OPTICA","venta_ppto":185231.08,"coste_ppto":208522.59},{"cod":"3.20","desc":"RETIRADA DE FIBRA OPTICA","venta_ppto":8390.6,"coste_ppto":4652.3},{"cod":"3.21","desc":"EJECUCION DE HERRAJES  DERETENCION Y SUSPENSION","venta_ppto":3210.82,"coste_ppto":11154.12},{"cod":"3.22","desc":"EJECUCION DE EMPALMES, ALMACENAMIENTO, SELLADO Y CAJAS","venta_ppto":38608.91,"coste_ppto":47141.11},{"cod":"3.23","desc":"EJECUCION DE SWITCH","venta_ppto":199089.29,"coste_ppto":166471.67},{"cod":"3.24","desc":"EJECUCION DE NODO IPMM","venta_ppto":0.0,"coste_ppto":0.0},{"cod":"3.25","desc":"EJECUCION DE SISTEMAS DE SUPERVISION DE FIBRA OPTICA","venta_ppto":1460.04,"coste_ppto":1138.86},{"cod":"3.26","desc":"SUPERVISION D EFIBRA OPTICA (ACTIVACION SSFO)","venta_ppto":38088.33,"coste_ppto":13393.45},{"cod":"3.29","desc":"EJECUCION DE SAI INCLUIDO BASTIDOR MODULOS DE CONTROL, DISTRIBUCION, PROTECCION BATERIAS ETC","venta_ppto":19517.87,"coste_ppto":15025.85},{"cod":"3.30","desc":"EJECUCION DE REPARTIDORES Y ARMARIOS","venta_ppto":393147.07,"coste_ppto":286169.26},{"cod":"4.01","desc":"DOCUMENTACION ISA, INTEROPERABILIDAD Y AS BUILT","venta_ppto":23005.49,"coste_ppto":19434.63},{"cod":"5.01","desc":"SEGURIDAD Y SALUD","venta_ppto":127267.82,"coste_ppto":2850.0},{"cod":"6.01","desc":"GESTION DE RESIDUOS","venta_ppto":4460.89,"coste_ppto":3768.48},{"cod":"7.01","desc":"INTEGRACION AMBIENTAL","venta_ppto":1697.82,"coste_ppto":1581.75}];
 
@@ -940,6 +1040,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Poblar desplegables
   poblarSelectTasks();
   poblarSelectPartidas();
+  poblarSelectPersonal();
+  poblarSelectMaquinaria();
 
   // Cargar borrador si existe
   cargarBorrador();
@@ -1050,6 +1152,170 @@ function toggleForm(id) {
 }
 
 // ═══════════════════════════════════════════
+// POBLAR DESPLEGABLES MAESTROS
+// ═══════════════════════════════════════════
+function poblarSelectPersonal() {
+  const sel = document.getElementById('p_select');
+  // Grupos por tipo
+  const grupos = { ENC: 'Encargados y Técnicos', MOD: 'Operarios y Oficiales', MOI: 'Mano de obra indirecta' };
+  const porGrupo = {};
+  PERSONAL_MAESTRO.forEach(p => {
+    const g = p.tipo || 'MOD';
+    if (!porGrupo[g]) porGrupo[g] = [];
+    porGrupo[g].push(p);
+  });
+  Object.entries(grupos).forEach(([tipo, label]) => {
+    if (!porGrupo[tipo]) return;
+    const grp = document.createElement('optgroup');
+    grp.label = label;
+    porGrupo[tipo].forEach((p, i) => {
+      const opt = document.createElement('option');
+      opt.value = PERSONAL_MAESTRO.indexOf(p);
+      opt.textContent = `${p.num ? p.num + ' · ' : ''}${p.nombre} (${p.cat}) — ${p.ch}€/h`;
+      grp.appendChild(opt);
+    });
+    sel.appendChild(grp);
+  });
+
+  // También poblar el select múltiple de Costes MOD
+  const selCostP = document.getElementById('cost_personal');
+  PERSONAL_MAESTRO.forEach((p, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `${p.num ? p.num + ' · ' : ''}${p.nombre} — ${p.ch}€/h`;
+    selCostP.appendChild(opt);
+  });
+}
+
+function poblarSelectMaquinaria() {
+  const sel = document.getElementById('m_select');
+  const grupos = { MAQ: 'Maquinaria pesada', VEH: 'Vehículos', AUX: 'Medios auxiliares' };
+  const porGrupo = {};
+  MAQ_MAESTRO.forEach(m => {
+    const g = m.tipo || 'AUX';
+    if (!porGrupo[g]) porGrupo[g] = [];
+    porGrupo[g].push(m);
+  });
+  Object.entries(grupos).forEach(([tipo, label]) => {
+    if (!porGrupo[tipo]) return;
+    const grp = document.createElement('optgroup');
+    grp.label = label;
+    porGrupo[tipo].forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = MAQ_MAESTRO.indexOf(m);
+      const coste = m.ch ? `${m.ch}€/h` : m.cd ? `${m.cd}€/día` : '—';
+      opt.textContent = `${m.cod} · ${m.desc} (${m.prov}) — ${coste}`;
+      grp.appendChild(opt);
+    });
+    sel.appendChild(grp);
+  });
+
+  // También poblar el select múltiple de Costes MOD
+  const selCostM = document.getElementById('cost_maquinaria');
+  MAQ_MAESTRO.forEach((m, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    const coste = m.ch ? `${m.ch}€/h` : m.cd ? `${m.cd}€/día` : '—';
+    opt.textContent = `${m.cod} · ${m.desc} — ${coste}`;
+    selCostM.appendChild(opt);
+  });
+}
+
+// ── Al seleccionar persona del desplegable maestro ─────────────
+function onPersonaSelect() {
+  const idx = document.getElementById('p_select').value;
+  if (idx === '') return;
+  const p = PERSONAL_MAESTRO[parseInt(idx)];
+  if (!p) return;
+  document.getElementById('p_num').value    = p.num  || '';
+  document.getElementById('p_nombre').value = p.nombre;
+  // Preseleccionar tipo
+  const tipoSel = document.getElementById('p_tipo');
+  for (let o of tipoSel.options) if (o.value === p.tipo) { o.selected = true; break; }
+  // Mostrar info de coste
+  const info = document.getElementById('p_coste_info');
+  info.style.display = 'block';
+  info.textContent = `${p.cat} · Coste: ${p.ch}€/h · Dieta completa: ${p.dc}€ · Media dieta: ${p.md}€ · Km: ${p.km}€/km`;
+  // Precargar km y dieta del maestro como referencia visual
+  document.getElementById('p_km').placeholder = `Ej: ${Math.round(p.km * 100)}`;
+}
+
+// ── Al seleccionar maquinaria del desplegable maestro ──────────
+function onMaqSelect() {
+  const idx = document.getElementById('m_select').value;
+  if (idx === '') return;
+  const m = MAQ_MAESTRO[parseInt(idx)];
+  if (!m) return;
+  document.getElementById('m_cod').value  = m.cod;
+  document.getElementById('m_desc').value = m.desc;
+  document.getElementById('m_prov').value = m.prov;
+  // Tipo coste
+  const tipoSel = document.getElementById('m_tipo');
+  for (let o of tipoSel.options) if (o.value === m.tipo) { o.selected = true; break; }
+  // Info coste
+  const info = document.getElementById('m_coste_info');
+  info.style.display = 'block';
+  const coste = m.ch ? `${m.ch} €/hora` : m.cd ? `${m.cd} €/día` : 'coste no definido';
+  info.textContent = `${m.tipo} · Proveedor: ${m.prov || '—'} · Coste: ${coste}`;
+  // Placeholder de horas
+  document.getElementById('m_horas').placeholder = m.ud === 'día' ? 'Días (ej: 1)' : 'Horas (ej: 8)';
+}
+
+// ── Al cambiar tipo recurso en Costes MOD ──────────────────────
+function onCostTipoChange() {
+  const tipo = document.getElementById('cost_tipo').value;
+  const pBlock = document.getElementById('cost_personal_block');
+  const mBlock = document.getElementById('cost_maq_block');
+  pBlock.style.display = (tipo === 'MAQ') ? 'none' : 'block';
+  mBlock.style.display = (tipo === 'MOD') ? 'none' : 'block';
+  calcularCostePreview();
+}
+
+// ── Preview de coste en imputación ────────────────────────────
+function calcularCostePreview() {
+  const pct   = parseFloat(document.getElementById('cost_pct').value) || 0;
+  const tipo  = document.getElementById('cost_tipo').value;
+  const preview = document.getElementById('cost_preview');
+  if (!pct) { preview.style.display = 'none'; return; }
+
+  // Horas totales de personal del parte actual
+  const totalHoras = state.personal.reduce((s, p) => s + (p.horas || 0), 0);
+  const horasTask  = totalHoras * pct / 100;
+
+  // Coste MOD: sumar coste/h de personas seleccionadas × horas task
+  let costeMOD = 0;
+  const selP = document.getElementById('cost_personal');
+  Array.from(selP.selectedOptions).forEach(opt => {
+    const pm = PERSONAL_MAESTRO[parseInt(opt.value)];
+    if (pm && pm.ch) {
+      // Buscar horas reales de esa persona en el parte
+      const persona = state.personal.find(x => x.num === pm.num || x.nombre === pm.nombre);
+      const hP = persona ? persona.horas : horasTask / Math.max(selP.selectedOptions.length, 1);
+      costeMOD += hP * (pct / 100) * pm.ch;
+    }
+  });
+
+  // Coste MAQ: sumar coste de maquinaria seleccionada
+  let costeMAQ = 0;
+  const selM = document.getElementById('cost_maquinaria');
+  Array.from(selM.selectedOptions).forEach(opt => {
+    const mm = MAQ_MAESTRO[parseInt(opt.value)];
+    if (!mm) return;
+    const maq = state.maquinaria.find(x => x.cod === mm.cod);
+    if (maq && mm.ch) costeMAQ += maq.horas * (pct / 100) * mm.ch;
+    else if (maq && mm.cd) costeMAQ += maq.horas * (pct / 100) * mm.cd;
+  });
+
+  const costeTotal = (tipo === 'MOD' ? costeMOD : tipo === 'MAQ' ? costeMAQ : costeMOD + costeMAQ);
+  if (costeTotal > 0) {
+    preview.style.display = 'block';
+    preview.textContent = `Coste estimado → ${costeTotal.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} € (${pct}% de ${totalHoras}h totales × coste/h)`;
+  } else {
+    preview.style.display = 'none';
+  }
+}
+
+// ═══════════════════════════════════════════
 // PERSONAL
 // ═══════════════════════════════════════════
 function addPersonal() {
@@ -1064,11 +1330,24 @@ function addPersonal() {
   if (!nombre) { showToast('Introduce el nombre', 'error'); return; }
   if (!horas) { showToast('Introduce las horas', 'error'); return; }
 
-  state.personal.push({ num, nombre, horas, dieta, km, tipo, incidencia });
+  // Buscar coste/h del maestro si viene del desplegable
+  const pSelIdx = document.getElementById('p_select').value;
+  const pMaestro = pSelIdx !== '' ? PERSONAL_MAESTRO[parseInt(pSelIdx)] : null;
+  const costeh = pMaestro ? pMaestro.ch : null;
+  const dieta_dc = pMaestro ? pMaestro.dc : 45;
+  const dieta_md = pMaestro ? pMaestro.md : 22.5;
+  const km_rate  = pMaestro ? pMaestro.km : 0.26;
+  // Calcular coste real de la jornada
+  const coste_dieta = dieta === 'dieta_completa' ? dieta_dc : dieta === 'media_dieta' ? dieta_md : 0;
+  const coste_km    = km * km_rate;
+  const coste_mod   = costeh ? (horas * costeh) + coste_dieta + coste_km : null;
+  state.personal.push({ num, nombre, horas, dieta, km, tipo, incidencia, costeh, coste_mod });
   renderPersonal();
   actualizarBadges();
   toggleForm('formPersonal');
   limpiarForm(['p_num','p_nombre','p_horas','p_km','p_incidencia']);
+  document.getElementById('p_select').value = '';
+  document.getElementById('p_coste_info').style.display = 'none';
   showToast('Persona añadida ✓', 'success');
 }
 
@@ -1114,11 +1393,19 @@ function addMaquinaria() {
 
   if (!desc) { showToast('Introduce la descripción', 'error'); return; }
 
-  state.maquinaria.push({ cod, desc, prov, horas, tipo });
+  const mSelIdx = document.getElementById('m_select').value;
+  const mMaestro = mSelIdx !== '' ? MAQ_MAESTRO[parseInt(mSelIdx)] : null;
+  const costeh_m  = mMaestro ? mMaestro.ch : null;
+  const costed_m  = mMaestro ? mMaestro.cd : null;
+  const ud_m      = mMaestro ? mMaestro.ud : 'h';
+  const coste_maq = costeh_m ? horas * costeh_m : costed_m ? horas * costed_m : null;
+  state.maquinaria.push({ cod, desc, prov, horas, tipo, costeh: costeh_m, costed: costed_m, ud: ud_m, coste_maq });
   renderMaquinaria();
   actualizarBadges();
   toggleForm('formMaquinaria');
-  limpiarForm(['m_cod','m_desc','m_horas']);
+  limpiarForm(['m_cod','m_desc','m_horas','m_prov']);
+  document.getElementById('m_select').value = '';
+  document.getElementById('m_coste_info').style.display = 'none';
   showToast('Equipo añadido ✓', 'success');
 }
 
@@ -1191,7 +1478,9 @@ function addProduccion() {
   const cant = parseFloat(document.getElementById('prod_cant').value);
   if (!cant || cant <= 0) { showToast('Introduce la cantidad', 'error'); return; }
 
-  const lugar = document.getElementById('prod_lugar').value.trim();
+  const lugar  = document.getElementById('prod_lugar').value.trim();
+  const pk_ini = document.getElementById('prod_pk_ini').value.trim();
+  const pk_fin = document.getElementById('prod_pk_fin').value.trim();
 
   state.produccion.push({
     partida_cod: partida.cod,
@@ -1213,7 +1502,9 @@ function addProduccion() {
   document.getElementById('prod_partida').value = '';
   document.getElementById('prod_cant').value = '';
   document.getElementById('prod_ud').value = '';
-  document.getElementById('prod_lugar').value = '';
+  document.getElementById('prod_lugar').value  = '';
+  document.getElementById('prod_pk_ini').value = '';
+  document.getElementById('prod_pk_fin').value = '';
   document.getElementById('prod_task_info').style.display = 'none';
   showToast('Producción añadida ✓', 'success');
 }
@@ -1238,6 +1529,7 @@ function renderProduccion() {
           <span class="meta-item">Cant: <span style="color:var(--accent);font-weight:500;">${p.cant} ${p.ud}</span></span>
           <span class="meta-item">Importe EC: <span>${p.importe.toLocaleString('es-ES',{minimumFractionDigits:2})} €</span></span>
           ${p.lugar ? `<span class="meta-item">📍 <span>${p.lugar}</span></span>` : ''}
+          ${(p.pk_ini || p.pk_fin) ? `<span class="meta-item">PK: <span>${p.pk_ini || '—'}${p.pk_fin ? ' → ' + p.pk_fin : ''}</span></span>` : ''}
         </div>
         ${task ? `<div style="font-size:10px;color:var(--text3);margin-top:4px;font-family:var(--mono);">→ BC: ${taskCod} · ${task.desc.substring(0,50)}</div>` : ''}
       </div>`;
@@ -1248,7 +1540,7 @@ function renderProduccion() {
 // ═══════════════════════════════════════════
 // COSTES MOD
 // ═══════════════════════════════════════════
-function onTaskChange() {}
+function onTaskChange() { calcularCostePreview(); }
 
 function addCoste() {
   const taskCod = document.getElementById('cost_task').value;
@@ -1263,10 +1555,46 @@ function addCoste() {
   }
 
   const tipo = document.getElementById('cost_tipo').value;
-  const obs = document.getElementById('cost_obs').value.trim();
+  const obs  = document.getElementById('cost_obs').value.trim();
   const task = TASKS.find(t => t.cod === taskCod);
 
-  state.costes.push({ task_cod: taskCod, task_desc: task ? task.desc : '', pct, tipo, obs });
+  // Recoger personas seleccionadas con su coste
+  const selP = document.getElementById('cost_personal');
+  const personalSel = Array.from(selP.selectedOptions).map(o => {
+    const pm = PERSONAL_MAESTRO[parseInt(o.value)];
+    return pm ? { num: pm.num, nombre: pm.nombre, costeh: pm.ch } : null;
+  }).filter(Boolean);
+
+  // Recoger maquinaria seleccionada
+  const selM = document.getElementById('cost_maquinaria');
+  const maqSel = Array.from(selM.selectedOptions).map(o => {
+    const mm = MAQ_MAESTRO[parseInt(o.value)];
+    return mm ? { cod: mm.cod, desc: mm.desc, costeh: mm.ch, costed: mm.cd, ud: mm.ud } : null;
+  }).filter(Boolean);
+
+  // Calcular coste real de MOD para esta Task
+  const totalHoras = state.personal.reduce((s, p) => s + (p.horas || 0), 0);
+  let costeMOD = 0, costeMAQ = 0;
+
+  personalSel.forEach(pm => {
+    const persona = state.personal.find(x => x.num === pm.num || x.nombre === pm.nombre);
+    if (persona && pm.costeh) costeMOD += persona.horas * (pct / 100) * pm.costeh;
+  });
+  maqSel.forEach(mm => {
+    const maq = state.maquinaria.find(x => x.cod === mm.cod);
+    if (maq) {
+      if (mm.costeh) costeMAQ += maq.horas * (pct / 100) * mm.costeh;
+      else if (mm.costed) costeMAQ += maq.horas * (pct / 100) * mm.costed;
+    }
+  });
+  const costeReal = tipo === 'MOD' ? costeMOD : tipo === 'MAQ' ? costeMAQ : costeMOD + costeMAQ;
+
+  state.costes.push({
+    task_cod: taskCod, task_desc: task ? task.desc : '',
+    pct, tipo, obs,
+    personal_sel: personalSel, maq_sel: maqSel,
+    coste_mod: costeMOD, coste_maq: costeMAQ, coste_real: costeReal
+  });
   renderCostes();
   actualizarPctBar();
   actualizarBadges();
@@ -1274,6 +1602,9 @@ function addCoste() {
   document.getElementById('cost_task').value = '';
   document.getElementById('cost_pct').value = '';
   document.getElementById('cost_obs').value = '';
+  document.getElementById('cost_preview').style.display = 'none';
+  Array.from(document.getElementById('cost_personal').options).forEach(o => o.selected = false);
+  Array.from(document.getElementById('cost_maquinaria').options).forEach(o => o.selected = false);
   showToast('Imputación añadida ✓', 'success');
 }
 
@@ -1298,6 +1629,9 @@ function renderCostes() {
         <div class="row-desc">${c.task_desc.substring(0,70)}</div>
         <div class="row-meta" style="margin-top:5px;">
           <span class="meta-item">Recurso: <span>${c.tipo}</span></span>
+          ${c.coste_real > 0 ? `<span class="meta-item">Coste real: <span style="color:var(--red);font-weight:500;">${c.coste_real.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €</span></span>` : ''}
+          ${c.personal_sel && c.personal_sel.length > 0 ? `<span class="meta-item">👷 <span>${c.personal_sel.map(p=>p.nombre.split(' ')[0]).join(', ')}</span></span>` : ''}
+          ${c.maq_sel && c.maq_sel.length > 0 ? `<span class="meta-item">🚜 <span>${c.maq_sel.map(m=>m.cod).join(', ')}</span></span>` : ''}
           ${c.obs ? `<span class="meta-item">📝 <span>${c.obs}</span></span>` : ''}
         </div>
       </div>`;
@@ -1535,7 +1869,12 @@ function acumularPartes(partes) {
 
     (p.costes||[]).forEach(c => {
       if (!costePorTask[c.task_cod]) costePorTask[c.task_cod] = 0;
-      costePorTask[c.task_cod] += totalHoras * (c.pct / 100) * COSTE_HORA;
+      // Usar coste real calculado si está disponible; si no, fallback al placeholder
+      if (c.coste_real && c.coste_real > 0) {
+        costePorTask[c.task_cod] += c.coste_real;
+      } else {
+        costePorTask[c.task_cod] += totalHoras * (c.pct / 100) * COSTE_HORA;
+      }
     });
   });
 
