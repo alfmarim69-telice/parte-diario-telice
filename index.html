@@ -1042,8 +1042,8 @@
             <label>Tipo recurso</label>
             <select id="cost_tipo" onchange="onCostTipoChange()">
               <option value="MOD">MOD — Mano de obra</option>
-              <option value="MAQ">MAQ — Maquinaria</option>
-              <option value="MOD+MAQ">MOD + MAQ</option>
+              <option value="MAQ">MAQ — Máquina sin operario</option>
+              <option value="MAQ+OP">MAQ+OP — Máquina con operario</option>
               <option value="MAT">MAT — Materiales</option>
               <option value="SUB">SUB — Subcontrata</option>
             </select>
@@ -1744,9 +1744,8 @@ function onCostTipoChange() {
   const mBlock   = document.getElementById('cost_maq_block');
   const matBlock = document.getElementById('cost_mat_block');
   const subBlock = document.getElementById('cost_sub_block');
-  const esMODMAQ = (tipo === 'MOD' || tipo === 'MAQ' || tipo === 'MOD+MAQ');
-  pBlock.style.display   = (tipo === 'MOD' || tipo === 'MOD+MAQ') ? 'block' : 'none';
-  mBlock.style.display   = (tipo === 'MAQ' || tipo === 'MOD+MAQ') ? 'block' : 'none';
+  pBlock.style.display   = (tipo === 'MOD') ? 'block' : 'none';
+  mBlock.style.display   = (tipo === 'MAQ' || tipo === 'MAQ+OP') ? 'block' : 'none';
   if (matBlock) matBlock.style.display = (tipo === 'MAT') ? 'block' : 'none';
   if (subBlock) subBlock.style.display = (tipo === 'SUB') ? 'block' : 'none';
   calcularCostePreview();
@@ -1972,8 +1971,8 @@ function calcularCostePreview() {
     const x = state.subcontratas[parseInt(opt.value)];
     if (x) costeSUB += x.coste_total * (pct / 100);
   });
-  const costeTotal = tipo === 'MOD' ? costeMOD : tipo === 'MAQ' ? costeMAQ :
-                     tipo === 'MAT' ? costeMAT : tipo === 'SUB' ? costeSUB : costeMOD + costeMAQ;
+  const costeTotal = tipo === 'MOD' ? costeMOD : (tipo === 'MAQ' || tipo === 'MAQ+OP') ? costeMAQ :
+                     tipo === 'MAT' ? costeMAT : tipo === 'SUB' ? costeSUB : 0;
   if (costeTotal > 0) {
     preview.style.display = 'block';
     preview.textContent = `Coste estimado → ${costeTotal.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} € (${pct}% de ${totalHoras}h totales × coste/h)`;
@@ -2218,12 +2217,11 @@ function addCoste() {
 
   // Validar por tipo de recurso de forma independiente
   const tipo_val = document.getElementById('cost_tipo').value;
-  // MOD+MAQ cuenta para ambos contadores
-  const afectaMOD = tipo_val === 'MOD' || tipo_val === 'MOD+MAQ';
-  const afectaMAQ = tipo_val === 'MAQ' || tipo_val === 'MOD+MAQ';
+  const afectaMOD = tipo_val === 'MOD';
+  const afectaMAQ = tipo_val === 'MAQ' || tipo_val === 'MAQ+OP';
   const afectaMAT = tipo_val === 'MAT';
-  const totalMOD = state.costes.filter(c => c.tipo === 'MOD' || c.tipo === 'MOD+MAQ').reduce((s,c) => s + c.pct, 0);
-  const totalMAQ = state.costes.filter(c => c.tipo === 'MAQ' || c.tipo === 'MOD+MAQ').reduce((s,c) => s + c.pct, 0);
+  const totalMOD = state.costes.filter(c => c.tipo === 'MOD').reduce((s,c) => s + c.pct, 0);
+  const totalMAQ = state.costes.filter(c => c.tipo === 'MAQ' || c.tipo === 'MAQ+OP').reduce((s,c) => s + c.pct, 0);
   const totalMAT = state.costes.filter(c => c.tipo === 'MAT').reduce((s,c) => s + c.pct, 0);
   if (afectaMOD && totalMOD + pct > 100) {
     showToast(`MOD: solo quedan ${100 - totalMOD}% disponibles`, 'error'); return;
@@ -2283,8 +2281,8 @@ function addCoste() {
                  tarifa: x.tarifa, coste_total: x.coste_total, empresa: x.empresa, task: x.task } : null;
   }).filter(Boolean);
   let costeSUB = subSel.reduce((s,x) => s + x.coste_total * (pct/100), 0);
-  const costeReal = tipo === 'MOD' ? costeMOD : tipo === 'MAQ' ? costeMAQ :
-                    tipo === 'MAT' ? costeMAT : tipo === 'SUB' ? costeSUB : costeMOD + costeMAQ;
+  const costeReal = tipo === 'MOD' ? costeMOD : (tipo === 'MAQ' || tipo === 'MAQ+OP') ? costeMAQ :
+                    tipo === 'MAT' ? costeMAT : tipo === 'SUB' ? costeSUB : 0;
 
   state.costes.push({
     task_cod: taskCod, task_desc: task ? task.desc : '',
@@ -2326,8 +2324,8 @@ function renderCostes() {
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
           <span class="row-tag">${c.task_cod}</span>
           <span style="font-family:var(--mono);font-size:11px;padding:2px 6px;border-radius:3px;
-            background:${c.tipo==='MOD'?'var(--blue2)':c.tipo==='MAQ'?'#FFF3E0':'#F3E5F5'};
-            color:${c.tipo==='MOD'?'var(--accent)':c.tipo==='MAQ'?'#E65100':'#6A1B9A'};">
+            background:${c.tipo==='MOD'?'var(--blue2)':(c.tipo==='MAQ'||c.tipo==='MAQ+OP')?'#FFF3E0':c.tipo==='MAT'?'#FAEEDA':'#F3E8FB'};
+            color:${c.tipo==='MOD'?'var(--accent)':(c.tipo==='MAQ'||c.tipo==='MAQ+OP')?'#E65100':c.tipo==='MAT'?'#633806':'#7030A0'};">
             ${c.tipo}</span>
           <span style="font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:500;">${c.pct}%</span>
           <span style="font-size:11px;color:var(--text3);">(${horasEfectivas} h)</span>
@@ -2347,8 +2345,8 @@ function renderCostes() {
 }
 
 function actualizarPctBar() {
-  const totalMOD = state.costes.filter(c => c.tipo === 'MOD' || c.tipo === 'MOD+MAQ').reduce((s,c) => s + c.pct, 0);
-  const totalMAQ = state.costes.filter(c => c.tipo === 'MAQ' || c.tipo === 'MOD+MAQ').reduce((s,c) => s + c.pct, 0);
+  const totalMOD = state.costes.filter(c => c.tipo === 'MOD').reduce((s,c) => s + c.pct, 0);
+  const totalMAQ = state.costes.filter(c => c.tipo === 'MAQ' || c.tipo === 'MAQ+OP').reduce((s,c) => s + c.pct, 0);
   const totalMAT = state.costes.filter(c => c.tipo === 'MAT').reduce((s,c) => s + c.pct, 0);
 
   const fillMOD = document.getElementById('pctFillMOD');
@@ -2845,7 +2843,7 @@ function acumularPartes(partes) {
         costePorTask[c.task_cod] += c.coste_real;
       } else {
         // Fallback: solo aplicar placeholder a MOD, no a MAQ
-        if (c.tipo === 'MOD' || c.tipo === 'MOD+MAQ') {
+        if (c.tipo === 'MOD') {
           costePorTask[c.task_cod] += totalHoras * (c.pct / 100) * COSTE_HORA;
         }
       }
