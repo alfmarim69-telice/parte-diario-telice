@@ -119,6 +119,8 @@
   /* SECTIONS */
   .section { display: none; padding: 16px; max-width: 800px; margin: 0 auto; padding-bottom: 80px; }
   .section.active { display: block; }
+  /* El informe es más ancho para que quepan las tablas sin barras de desplazamiento */
+  #sec-informe { max-width: 1200px; }
 
   /* CARDS */
   .card {
@@ -790,8 +792,21 @@
             <input type="text" id="m_prov" placeholder="Ej: Afrosan">
           </div>
           <div class="field">
-            <label>Horas / Días uso</label>
-            <input type="number" id="m_horas" min="0" max="24" step="0.5" placeholder="8">
+            <label>Tiempo de uso</label>
+            <input type="number" id="m_horas" min="0" step="0.5" placeholder="1" oninput="calcMaqCoste()">
+          </div>
+          <div class="field">
+            <label>Unidad</label>
+            <select id="m_unidad" onchange="onMaqUnidadChange()">
+              <option value="dia">Días</option>
+              <option value="hora">Horas</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-grid cols-3" style="margin-bottom:8px;">
+          <div class="field">
+            <label>Coste / unidad €</label>
+            <input type="number" id="m_tarifa" min="0" step="0.01" placeholder="0.00" oninput="calcMaqCoste()">
           </div>
           <div class="field">
             <label>Tipo coste</label>
@@ -800,6 +815,10 @@
               <option value="VEH">VEH — Vehículo</option>
               <option value="AUX">AUX — Medios auxiliares</option>
             </select>
+          </div>
+          <div class="field">
+            <label>Coste total</label>
+            <input type="text" id="m_coste_total" readonly style="color:var(--red);font-weight:600;background:var(--bg4);" placeholder="—">
           </div>
         </div>
         <div class="add-form-actions">
@@ -1331,7 +1350,7 @@
     <div class="card-head"><span class="card-head-title">Resumen por Task</span></div>
     <div class="card-body" style="padding:0;">
       <div style="overflow-x:auto;">
-        <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:620px;">
+        <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:560px;">
           <thead>
             <tr style="background:var(--bg4);">
               <th style="padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);color:var(--text2);white-space:nowrap;">Task</th>
@@ -2263,13 +2282,44 @@ function onMaqSelect() {
   // Tipo coste
   const tipoSel = document.getElementById('m_tipo');
   for (let o of tipoSel.options) if (o.value === m.tipo) { o.selected = true; break; }
-  // Info coste
+  // Unidad por defecto: si tiene coste/día úsalo; si solo tiene coste/hora, horas
+  const unidadSel = document.getElementById('m_unidad');
+  unidadSel.value = (m.cd && !m.ch) ? 'dia' : (m.ch && !m.cd) ? 'hora' : (m.ud === 'día' ? 'dia' : 'dia');
+  // Info coste (muestra ambas tarifas disponibles)
   const info = document.getElementById('m_coste_info');
   info.style.display = 'block';
-  const coste = m.ch ? `${m.ch} €/hora` : m.cd ? `${m.cd} €/día` : 'coste no definido';
-  info.textContent = `${m.tipo} · Proveedor: ${m.prov || '—'} · Coste: ${coste}`;
-  // Placeholder de horas
-  document.getElementById('m_horas').placeholder = m.ud === 'día' ? 'Días (ej: 1)' : 'Horas (ej: 8)';
+  const tarifas = [];
+  if (m.ch) tarifas.push(`${m.ch} €/hora`);
+  if (m.cd) tarifas.push(`${m.cd} €/día`);
+  info.textContent = `${m.tipo} · Proveedor: ${m.prov || '—'} · ${tarifas.length ? tarifas.join(' · ') : 'coste no definido'}`;
+  if (!document.getElementById('m_horas').value) document.getElementById('m_horas').value = 1;
+  onMaqUnidadChange();
+}
+
+function onMaqUnidadChange() {
+  const idx = document.getElementById('m_select').value;
+  const m = idx !== '' ? MAQ_MAESTRO[parseInt(idx)] : null;
+  const unidad = document.getElementById('m_unidad').value;
+  // Rellenar tarifa del maestro según unidad (editable)
+  if (m) {
+    const tarifa = unidad === 'hora' ? m.ch : m.cd;
+    document.getElementById('m_tarifa').value = tarifa || '';
+  }
+  document.getElementById('m_horas').placeholder = unidad === 'dia' ? 'Días (ej: 1)' : 'Horas (ej: 6)';
+  calcMaqCoste();
+}
+
+function calcMaqCoste() {
+  const cant   = parseFloat(document.getElementById('m_horas').value) || 0;
+  const tarifa = parseFloat(document.getElementById('m_tarifa').value) || 0;
+  const unidad = document.getElementById('m_unidad').value;
+  const out = document.getElementById('m_coste_total');
+  if (cant > 0 && tarifa > 0) {
+    const total = cant * tarifa;
+    out.value = `${total.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €`;
+  } else {
+    out.value = '';
+  }
 }
 
 // ── Al cambiar tipo recurso en Costes MOD ──────────────────────
@@ -2344,17 +2394,14 @@ function renderCostRecursos() {
     listaM.innerHTML = '<div style="font-size:11px;color:var(--text3);font-style:italic;">Añade maquinaria en la pestaña Maquinaria.</div>';
   } else {
     state.maquinaria.forEach((m, i) => {
-      const mm = MAQ_MAESTRO.find(x => x.cod === m.cod);
-      const costeh = mm ? mm.ch : m.costeh || null;
-      const costed = mm ? mm.cd : m.costed || null;
-      const ud     = mm ? mm.ud : m.ud || 'h';
-      const costeLabel = costeh ? `${costeh}€/h` : costed ? `${costed}€/día` : 'coste no definido';
+      const ud = m.unidad === 'dia' ? 'día' : 'h';
+      const costeLabel = m.tarifa ? `${m.tarifa.toLocaleString('es-ES',{maximumFractionDigits:2})}€/${ud}` : 'coste no definido';
       const yaSeleccionado = Array.from(selM.options).some(o => o.value === String(i));
 
       const row = document.createElement('label');
       row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 10px;' +
         'background:var(--bg3);border:1px solid var(--border);border-radius:4px;cursor:pointer;';
-      const costeJornada = costeh ? m.horas * costeh : costed ? m.horas * costed : null;
+      const costeJornada = m.coste_maq != null ? m.coste_maq : (m.tarifa ? m.horas * m.tarifa : null);
       row.innerHTML = `
         <input type="checkbox" data-idx="${i}" data-tipo="m"
           ${yaSeleccionado ? 'checked' : ''}
@@ -2530,10 +2577,11 @@ function calcularCostePreview() {
   Array.from(selM.options).forEach(opt => {
     const idx = parseInt(opt.value);
     const m   = state.maquinaria[idx];
-    const mm  = m ? MAQ_MAESTRO.find(x => x.cod === m.cod) : null;
-    if (m && mm) {
-      if (mm.ch) costeMAQ += m.horas * (pct / 100) * mm.ch;
-      else if (mm.cd) costeMAQ += m.horas * (pct / 100) * mm.cd;
+    if (m) {
+      // Usar el coste ya calculado de la máquina (respeta unidad y tarifa elegidas)
+      const cm = m.coste_maq != null ? m.coste_maq
+                 : (m.tarifa ? m.horas * m.tarifa : 0);
+      costeMAQ += cm * (pct / 100);
     }
   });
 
@@ -2647,22 +2695,30 @@ function addMaquinaria() {
   const desc = document.getElementById('m_desc').value.trim();
   const prov = document.getElementById('m_prov').value;
   const horas = parseFloat(document.getElementById('m_horas').value) || 0;
+  const unidad = document.getElementById('m_unidad').value; // 'hora' | 'dia'
+  const tarifa = parseFloat(document.getElementById('m_tarifa').value) || 0;
   const tipo = document.getElementById('m_tipo').value;
 
   if (!desc) { showToast('Introduce la descripción', 'error'); return; }
+  if (horas <= 0) { showToast('Introduce el tiempo de uso', 'error'); return; }
 
-  const mSelIdx = document.getElementById('m_select').value;
-  const mMaestro = mSelIdx !== '' ? MAQ_MAESTRO[parseInt(mSelIdx)] : null;
-  const costeh_m  = mMaestro ? mMaestro.ch : null;
-  const costed_m  = mMaestro ? mMaestro.cd : null;
-  const ud_m      = mMaestro ? mMaestro.ud : 'h';
-  const coste_maq = costeh_m ? horas * costeh_m : costed_m ? horas * costed_m : null;
-  state.maquinaria.push({ cod, desc, prov, horas, tipo, costeh: costeh_m, costed: costed_m, ud: ud_m, coste_maq });
+  const coste_maq = horas * tarifa;
+  state.maquinaria.push({
+    cod, desc, prov, horas, tipo,
+    unidad,                                  // 'hora' | 'dia'
+    tarifa,                                  // coste por unidad usado
+    costeh: unidad === 'hora' ? tarifa : null,
+    costed: unidad === 'dia'  ? tarifa : null,
+    ud: unidad === 'dia' ? 'día' : 'h',
+    coste_maq
+  });
   renderMaquinaria();
   actualizarBadges();
   toggleForm('formMaquinaria');
-  limpiarForm(['m_cod','m_desc','m_horas','m_prov']);
+  limpiarForm(['m_cod','m_desc','m_horas','m_prov','m_tarifa']);
+  document.getElementById('m_coste_total').value = '';
   document.getElementById('m_select').value = '';
+  document.getElementById('m_unidad').value = 'dia';
   document.getElementById('m_coste_info').style.display = 'none';
   showToast('Equipo añadido ✓', 'success');
 }
@@ -2683,7 +2739,9 @@ function renderMaquinaria() {
         </div>
         <div class="row-meta">
           <span class="meta-item">Proveedor: <span>${m.prov}</span></span>
-          <span class="meta-item">Horas: <span>${m.horas}h</span></span>
+          <span class="meta-item">Uso: <span style="color:var(--accent);font-weight:500;">${m.horas} ${m.unidad === 'dia' ? (m.horas==1?'día':'días') : 'h'}</span></span>
+          ${m.tarifa?`<span class="meta-item">Tarifa: <span>${m.tarifa.toLocaleString('es-ES',{maximumFractionDigits:2})} €/${m.unidad==='dia'?'día':'h'}</span></span>`:''}
+          ${m.coste_maq?`<span class="meta-item">Coste: <span style="color:var(--red);font-weight:500;">${m.coste_maq.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €</span></span>`:''}
           <span class="meta-item">Tipo: <span>${m.tipo}</span></span>
         </div>
       </div>`;
@@ -2714,6 +2772,13 @@ function onPartidaChange() {
     + `<br><span style="font-size:10px;color:var(--text3);">Precio venta: ${partida.pu.toFixed(4)} €/${partida.ud} · Medición ppto: ${partida.med.toLocaleString('es-ES')} ${partida.ud}</span>`;
 }
 
+// Devuelve el material asociado a una partida de certificación (si tiene suministro ts asignado)
+function getMaterialDePartida(cod) {
+  const pc = PARTIDAS_CERT.find(p => p.cod === cod);
+  if (!pc || !pc.ts) return null;            // sin suministro asignado → pura mano de obra
+  return MAT_MAESTRO.find(m => m.cod === cod) || null;  // material con el mismo código (1:1)
+}
+
 function addProduccion() {
   const selPart = document.getElementById('prod_partida');
   if (!selPart.value) { showToast('Selecciona una partida', 'error'); return; }
@@ -2726,11 +2791,24 @@ function addProduccion() {
   const cant = parseFloat(document.getElementById('prod_cant').value);
   if (!cant || cant <= 0) { showToast('Introduce la cantidad', 'error'); return; }
 
+  // ── Validación de suministro: partidas con material (ts) requieren stock disponible ──
+  const material = getMaterialDePartida(partida.cod);
+  if (material) {
+    const disp = getDisponibleMat()[material.cod];
+    const disponible = disp ? disp.disponible : 0;
+    if (cant > disponible + 0.001) {
+      showToast(`No hay suministro suficiente de ${material.cod}. Disponible: ${disponible.toLocaleString('es-ES',{maximumFractionDigits:2})} ${material.ud}. Registra el material en la pestaña Materiales o verifica el almacén.`, 'error');
+      return;
+    }
+  }
+
   const lugar  = document.getElementById('prod_lugar').value.trim();
   const pk_ini = document.getElementById('prod_pk_ini').value.trim();
   const pk_fin = document.getElementById('prod_pk_fin').value.trim();
+  const pid = Date.now() + Math.floor(Math.random()*1000);
 
   state.produccion.push({
+    _pid: pid,
     partida_cod: partida.cod,
     partida_desc: partida.desc,
     ud: partida.ud,
@@ -2742,10 +2820,30 @@ function addProduccion() {
     task_ejec: partida.te,
     task_sum: partida.ts,
     cap: partida.cap,
-    lugar, pk_ini, pk_fin
+    lugar, pk_ini, pk_fin,
+    mat_cod: material ? material.cod : null
   });
 
+  // ── Coste del material automático (1:1, consumido del almacén, imputado a la Task de ejecución) ──
+  if (material) {
+    const tEjec = partida.te || partida.task_ejec || '';
+    const tInfo = TASKS.find(t => t.cod === tEjec);
+    const costeMat = Math.round(cant * (material.coste_ud || 0) * 100) / 100;
+    state.costes.push({
+      task_cod: tEjec, task_desc: tInfo ? tInfo.desc : '',
+      pct: 100, tipo: 'MAT', obs: 'Material de producción (automático)',
+      personal_sel: [], maq_sel: [], sub_sel: [], otros_sel: [],
+      mat_sel: [{ cod: material.cod, desc: material.desc, ud: material.ud,
+                  coste_ud: material.coste_ud, cant_consumida: cant, coste: costeMat }],
+      coste_mod: 0, coste_maq: 0, coste_mat: costeMat, coste_sub: 0, coste_otros: 0,
+      coste_real: costeMat,
+      _auto_prod: pid
+    });
+    renderCostes(); actualizarPctBar();
+  }
+
   renderProduccion();
+  renderAlmacen();
   actualizarBadges();
   toggleForm('formProduccion');
   document.getElementById('prod_partida').value = '';
@@ -2755,7 +2853,7 @@ function addProduccion() {
   document.getElementById('prod_pk_ini').value = '';
   document.getElementById('prod_pk_fin').value = '';
   document.getElementById('prod_task_info').style.display = 'none';
-  showToast('Producción añadida ✓', 'success');
+  showToast(material ? 'Producción añadida ✓ (material imputado automáticamente)' : 'Producción añadida ✓', 'success');
 }
 
 function renderProduccion() {
@@ -2795,11 +2893,17 @@ function addCoste() {
   const taskCod = document.getElementById('cost_task').value;
   if (!taskCod) { showToast('Selecciona una Task', 'error'); return; }
 
-  const pct = parseFloat(document.getElementById('cost_pct').value);
-  if (!pct || pct <= 0 || pct > 100) { showToast('Introduce un % válido (1-100)', 'error'); return; }
+  const tipo_val = document.getElementById('cost_tipo').value;
+  const usaPct = (tipo_val === 'MOD' || tipo_val === 'MAQ' || tipo_val === 'MAQ+OP' || tipo_val === 'SUB');
+  let pct = parseFloat(document.getElementById('cost_pct').value);
+  // El % de horas solo aplica a MOD/MAQ/MAQ+OP/SUB. MAT y OTROS se imputan por cantidad/importe.
+  if (usaPct) {
+    if (!pct || pct <= 0 || pct > 100) { showToast('Introduce un % válido (1-100)', 'error'); return; }
+  } else {
+    pct = 100; // íntegro
+  }
 
   // Validar por tipo de recurso de forma independiente
-  const tipo_val = document.getElementById('cost_tipo').value;
   const afectaMOD = tipo_val === 'MOD';
   const afectaMAQ = tipo_val === 'MAQ' || tipo_val === 'MAQ+OP';
   const afectaMAT = false; // MAT ya no usa % de horas (consumo por cantidad)
@@ -2851,9 +2955,9 @@ function addCoste() {
   const selM = document.getElementById('cost_maquinaria');
   const maqSel = Array.from(selM.options).map(o => {
     const m  = state.maquinaria[parseInt(o.value)];
-    const mm = m ? MAQ_MAESTRO.find(x => x.cod === m.cod) : null;
-    return m ? { cod: m.cod, desc: m.desc, costeh: mm ? mm.ch : m.costeh || 0,
-                 costed: mm ? mm.cd : m.costed || 0, ud: mm ? mm.ud : 'h', horas: m.horas } : null;
+    return m ? { cod: m.cod, desc: m.desc, horas: m.horas, unidad: m.unidad || 'dia',
+                 tarifa: m.tarifa || 0, coste_maq: m.coste_maq || 0,
+                 costeh: m.costeh || null, costed: m.costed || null, ud: m.ud || 'h' } : null;
   }).filter(Boolean);
 
   const totalHoras = state.personal.reduce((s, p) => s + (p.horas || 0), 0);
@@ -3008,13 +3112,20 @@ function actualizarPctBar() {
 // HELPERS
 // ═══════════════════════════════════════════
 function delItem(lista, idx) {
+  // Si se borra una producción con material automático, eliminar su coste vinculado
+  if (lista === 'produccion') {
+    const prod = state.produccion[idx];
+    if (prod && prod._pid) {
+      state.costes = state.costes.filter(c => c._auto_prod !== prod._pid);
+    }
+  }
   state[lista].splice(idx, 1);
   if (lista === 'personal') renderPersonal();
   if (lista === 'maquinaria') renderMaquinaria();
   if (lista === 'materiales') renderMateriales();
   if (lista === 'subcontratas') renderSubcontratas();
   if (lista === 'otros') renderOtros();
-  if (lista === 'produccion') renderProduccion();
+  if (lista === 'produccion') { renderProduccion(); renderCostes(); renderAlmacen(); actualizarPctBar(); }
   if (lista === 'costes') { renderCostes(); }
   actualizarBadges();
 }
@@ -3172,9 +3283,10 @@ function enviarAJefe() {
   const parte = construirParte(c, 'pendiente_costes');
   parte._rol_origen = 'encargado';
 
-  // Guardar en historial local del encargado
+  // Guardar en historial local: actualizar si ya existe (parte recuperado), si no añadir
   const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
-  hist.unshift(parte);
+  const i = hist.findIndex(p => p._id === parte._id);
+  if (i >= 0) hist[i] = parte; else hist.unshift(parte);
   localStorage.setItem('telice_historial', JSON.stringify(hist.slice(0, 50)));
   localStorage.removeItem('telice_borrador');
 
@@ -3262,6 +3374,28 @@ function reexportarParte(id) {
   const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   const p = hist.find(x => x._id === id);
   if (p) exportarParteArchivo(p);
+}
+
+// Recuperar un parte (enviado sin terminar o borrador) para seguir editándolo
+function editarParte(id) {
+  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
+  const parte = hist.find(p => p._id === id);
+  if (!parte) { showToast('No se encontró el parte', 'error'); return; }
+  if (!confirm('Se recuperará este parte en el formulario para editarlo. Al volver a enviarlo se actualizará (no se duplica). ¿Continuar?')) return;
+
+  _parteEnEdicion = parte; // conserva el _id para actualizar al reenviar
+  setCabecera(parte.cabecera);
+  state.personal     = parte.personal     || [];
+  state.maquinaria   = parte.maquinaria   || [];
+  state.materiales   = parte.materiales   || [];
+  state.subcontratas = parte.subcontratas || [];
+  state.otros        = parte.otros        || [];
+  state.produccion   = parte.produccion   || [];
+  state.costes       = parte.costes       || [];
+  renderPersonal(); renderMaquinaria(); renderMateriales(); renderSubcontratas();
+  renderOtros(); renderProduccion(); renderCostes(); renderAlmacen(); actualizarBadges();
+  showTab('cabecera');
+  showToast('Parte recuperado — edítalo y vuelve a enviarlo', 'success');
 }
 
 // ── Exportar parte a archivo (.telice.json) ───────────────────
@@ -3441,6 +3575,10 @@ function actualizarHistorial() {
         // Encargado: reabrir un parte devuelto para corregirlo
         if (rol === 'encargado' && p._estado === 'devuelto') {
           acciones += `<button onclick="completarCostes(${p._id})" style="width:100%;padding:9px;margin-top:6px;background:var(--accent);border:none;border-radius:6px;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;">✏️ Corregir y reenviar</button>`;
+        }
+        // Encargado: recuperar un parte enviado sin terminar / borrador para editarlo
+        if (rol === 'encargado' && (p._estado === 'pendiente_costes' || p._estado === 'borrador')) {
+          acciones += `<button onclick="editarParte(${p._id})" style="width:100%;padding:9px;margin-top:6px;background:var(--accent);border:none;border-radius:6px;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;">✏️ Recuperar y editar parte</button>`;
         }
         // Reenviar archivo (compartir de nuevo)
         acciones += `<button onclick="reexportarParte(${p._id})" style="width:100%;padding:8px;margin-top:6px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;color:var(--text2);font-family:var(--font);font-size:12px;cursor:pointer;">📤 Compartir archivo del parte</button>`;
