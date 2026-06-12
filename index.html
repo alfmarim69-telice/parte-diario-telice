@@ -524,7 +524,7 @@
   <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
     <select id="rolSelector" onchange="cambiarRol(this.value)"
       style="background:var(--bg3);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:var(--font);font-size:12px;font-weight:600;padding:5px 8px;cursor:pointer;">
-      <option value="encargado">👷 Encargado</option>
+      <option value="encargado">👷 Jefe de equipo</option>
       <option value="jefe">📋 Jefe de obra</option>
     </select>
     <button class="sync-btn" onclick="syncPartes()" style="padding:4px 8px;font-size:11px;">
@@ -537,13 +537,16 @@
 <nav class="nav-tabs">
   <div class="nav-tab active" onclick="showTab('cabecera')">Cabecera</div>
   <div class="nav-tab" onclick="showTab('personal')">Personal <span class="badge" id="badgePersonal">0</span></div>
-  <div class="nav-tab" onclick="showTab('maquinaria')">Maquinaria <span class="badge" id="badgeMaq">0</span></div>
+  <div class="nav-tab" onclick="showTab('maquinaria')">Maq&Veh propios <span class="badge" id="badgeMaq">0</span></div>
+  <div class="nav-tab" onclick="showTab('alquileres')">Alquileres <span class="badge" id="badgeAlq">0</span></div>
+  <div class="nav-tab" onclick="showTab('moexterna')">M.O externa <span class="badge" id="badgeMOE">0</span></div>
   <div class="nav-tab" onclick="showTab('materiales')">Materiales <span class="badge" id="badgeMat">0</span></div>
   <div class="nav-tab" onclick="showTab('subcontratas')">Subcontratas <span class="badge" id="badgeSub">0</span></div>
   <div class="nav-tab" onclick="showTab('otros')">Otros Conceptos <span class="badge" id="badgeOtros">0</span></div>
   <div class="nav-tab" onclick="showTab('almacen')">Almacén <span class="badge" id="badgeAlmacen">0</span></div>
   <div class="nav-tab" onclick="showTab('produccion')">Producción <span class="badge" id="badgeProd">0</span></div>
   <div class="nav-tab" id="navCostes" onclick="showTab('costes')">Costes <span class="badge" id="badgeCostes">0</span></div>
+  <div class="nav-tab" id="navIndirectos" onclick="showTab('indirectos')">C. Indirectos <span class="badge" id="badgeInd">0</span></div>
   <div class="nav-tab" onclick="showTab('historial')">Historial</div>
   <div class="nav-tab" onclick="showTab('informe')">📊 Informe</div>
 </nav>
@@ -581,7 +584,7 @@
         </div>
         <div class="field">
           <label>Responsable</label>
-          <input type="text" id="responsable" placeholder="Nombre del encargado">
+          <input type="text" id="responsable" placeholder="Nombre del jefe de equipo">
         </div>
       </div>
       <div class="field-grid" style="margin-bottom:10px;">
@@ -722,30 +725,24 @@
           </div>
           <div class="field">
             <label>Dieta</label>
-            <select id="p_dieta">
-              <option value="dieta_completa">Dieta completa</option>
-              <option value="media_dieta">Media dieta</option>
-              <option value="sin_dieta">Sin dieta</option>
+            <select id="p_pernocta" onchange="onPernoctaChange()">
+              <option value="no">No pernocta — media dieta</option>
+              <option value="si">Pernocta — dieta completa</option>
+              <option value="sin">Sin dieta</option>
             </select>
           </div>
-          <div class="field">
-            <label>Km desplaz.</label>
-            <input type="number" id="p_km" min="0" step="1" placeholder="0">
+          <div class="field" id="p_km_wrap" style="display:none;">
+            <label>Km (ida) desde base</label>
+            <input type="number" id="p_km" min="0" step="1" placeholder="0" oninput="calcDietaPersona()">
           </div>
         </div>
-        <div class="field-grid" style="margin-bottom:8px;">
-          <div class="field">
-            <label>Tipo coste</label>
-            <select id="p_tipo">
-              <option value="MOD">MOD — Mano de obra directa</option>
-              <option value="MOI">MOI — Mano de obra indirecta</option>
-              <option value="ENC">ENC — Encargado</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Incidencias</label>
-            <input type="text" id="p_incidencia" placeholder="(opcional)">
-          </div>
+        <div id="p_dieta_info" style="display:none;margin-bottom:8px;font-size:11px;
+             color:var(--green);background:var(--green2);padding:6px 10px;
+             border-radius:4px;border-left:2px solid var(--green);font-family:var(--mono);">
+        </div>
+        <div class="field col-1" style="margin-bottom:8px;">
+          <label>Incidencias</label>
+          <input type="text" id="p_incidencia" placeholder="(opcional)">
         </div>
         <div class="add-form-actions">
           <button class="btn-confirm" onclick="addPersonal()">Confirmar</button>
@@ -759,7 +756,7 @@
 <!-- ═══════════════════════════════════════════════ MAQUINARIA -->
 <section class="section" id="sec-maquinaria">
   <div class="card">
-    <div class="card-head"><span class="card-head-title">Vehículos y maquinaria</span></div>
+    <div class="card-head"><span class="card-head-title">Maquinaria y vehículos propios (Telice)</span></div>
     <div class="card-body">
       <div class="row-list" id="listaMaquinaria"></div>
       <button class="add-btn" onclick="toggleForm('formMaquinaria')">＋ Añadir equipo</button>
@@ -824,6 +821,131 @@
         <div class="add-form-actions">
           <button class="btn-confirm" onclick="addMaquinaria()">Confirmar</button>
           <button class="btn-cancel" onclick="toggleForm('formMaquinaria')">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════ ALQUILERES -->
+<section class="section" id="sec-alquileres">
+  <div class="card">
+    <div class="card-head">
+      <span class="card-head-title">Maquinaria de alquiler y equipos auxiliares</span>
+      <span style="font-size:11px;color:var(--text3);" id="totalCosteAlq">0,00 €</span>
+    </div>
+    <div class="card-body">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">
+        Maquinaria alquilada (Alquiber, Ayvens...) y equipos auxiliares de mano: rotopercutores, taladros, grupos, etc.
+      </div>
+      <div id="listaAlquileres" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;"></div>
+      <button class="add-btn" onclick="toggleForm('formAlquileres')">＋ Añadir alquiler / equipo auxiliar</button>
+      <div class="add-form" id="formAlquileres">
+        <div class="field col-1" style="margin-bottom:8px;">
+          <label>Equipo de alquiler</label>
+          <select id="alq_select" onchange="onAlqSelect()">
+            <option value="">— Seleccionar de la lista (o rellenar a mano) —</option>
+          </select>
+        </div>
+        <div id="alq_coste_info" style="display:none;margin-bottom:8px;font-size:11px;
+             color:var(--accent);background:var(--blue2);padding:6px 10px;
+             border-radius:4px;border-left:2px solid var(--accent);font-family:var(--mono);">
+        </div>
+        <div class="field-grid" style="margin-bottom:8px;">
+          <div class="field">
+            <label>Código / Ref.</label>
+            <input type="text" id="alq_cod" placeholder="Ej: MA01">
+          </div>
+          <div class="field">
+            <label>Descripción</label>
+            <input type="text" id="alq_desc" placeholder="Ej: Rotopercutor Hilti">
+          </div>
+        </div>
+        <div class="field-grid cols-3" style="margin-bottom:8px;">
+          <div class="field">
+            <label>Proveedor</label>
+            <input type="text" id="alq_prov" placeholder="Ej: Alquiber">
+          </div>
+          <div class="field">
+            <label>Tiempo de uso</label>
+            <input type="number" id="alq_horas" min="0" step="0.5" placeholder="1" oninput="calcAlqCoste()">
+          </div>
+          <div class="field">
+            <label>Unidad</label>
+            <select id="alq_unidad" onchange="onAlqUnidadChange()">
+              <option value="dia">Días</option>
+              <option value="hora">Horas</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-grid cols-3" style="margin-bottom:8px;">
+          <div class="field">
+            <label>Coste / unidad €</label>
+            <input type="number" id="alq_tarifa" min="0" step="0.01" placeholder="0.00" oninput="calcAlqCoste()">
+          </div>
+          <div class="field">
+            <label>Tipo</label>
+            <select id="alq_tipo">
+              <option value="MAQ">MAQ — Maquinaria</option>
+              <option value="AUX">AUX — Equipo auxiliar</option>
+              <option value="VEH">VEH — Vehículo</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Coste total</label>
+            <input type="text" id="alq_coste_total" readonly style="color:var(--red);font-weight:600;background:var(--bg4);" placeholder="—">
+          </div>
+        </div>
+        <div class="add-form-actions">
+          <button class="btn-confirm" onclick="addAlquiler()">Confirmar</button>
+          <button class="btn-cancel" onclick="toggleForm('formAlquileres')">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════ M.O EXTERNA -->
+<section class="section" id="sec-moexterna">
+  <div class="card">
+    <div class="card-head">
+      <span class="card-head-title">Mano de obra externa</span>
+      <span style="font-size:11px;color:var(--text3);" id="totalCosteMOE">0,00 €</span>
+    </div>
+    <div class="card-body">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">
+        Personal externo contratado por horas (ETT, refuerzos de otras empresas...). Se imputa como mano de obra en Costes.
+      </div>
+      <div id="listaMOExterna" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;"></div>
+      <button class="add-btn" onclick="toggleForm('formMOExterna')">＋ Añadir trabajador externo</button>
+      <div class="add-form" id="formMOExterna">
+        <div class="field-grid" style="margin-bottom:8px;">
+          <div class="field">
+            <label>Nombre / puesto</label>
+            <input type="text" id="moe_nombre" placeholder="Ej: Oficial 1ª (ETT)">
+          </div>
+          <div class="field">
+            <label>Empresa</label>
+            <input type="text" id="moe_empresa" placeholder="Ej: Adecco">
+          </div>
+        </div>
+        <div class="field-grid cols-3" style="margin-bottom:8px;">
+          <div class="field">
+            <label>Horas</label>
+            <input type="number" id="moe_horas" min="0" max="24" step="0.5" placeholder="8" oninput="calcMOECoste()">
+          </div>
+          <div class="field">
+            <label>Tarifa €/h</label>
+            <input type="number" id="moe_tarifa" min="0" step="0.01" placeholder="0.00" oninput="calcMOECoste()">
+          </div>
+          <div class="field">
+            <label>Coste total</label>
+            <input type="text" id="moe_coste_total" readonly style="color:var(--red);font-weight:600;background:var(--bg4);" placeholder="—">
+          </div>
+        </div>
+        <div class="add-form-actions">
+          <button class="btn-confirm" onclick="addMOExterna()">Confirmar</button>
+          <button class="btn-cancel" onclick="toggleForm('formMOExterna')">Cancelar</button>
         </div>
       </div>
     </div>
@@ -1296,6 +1418,49 @@
   </div>
 </section>
 
+<!-- ═══════════════════════════════════════════════ COSTES INDIRECTOS -->
+<section class="section" id="sec-indirectos">
+  <div class="card">
+    <div class="card-head">
+      <span class="card-head-title">Costes indirectos de obra</span>
+      <span style="font-size:11px;color:var(--text3);" id="totalCosteInd">0,00 €</span>
+    </div>
+    <div class="card-body">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">
+        Costes generales de la obra no imputables a una Task de producción (casetas, consumos, topografía, ensayos...). Solo los registra el jefe de obra.
+      </div>
+      <div id="listaIndirectos" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;"></div>
+      <button class="add-btn" onclick="toggleForm('formIndirectos')">＋ Añadir coste indirecto</button>
+      <div class="add-form" id="formIndirectos">
+        <div class="field col-1" style="margin-bottom:8px;">
+          <label>Concepto</label>
+          <select id="ind_select" onchange="onIndSelect()">
+            <option value="">— Seleccionar concepto —</option>
+          </select>
+        </div>
+        <div class="field col-1" id="ind_otro_wrap" style="display:none;margin-bottom:8px;">
+          <label>Especificar concepto</label>
+          <input type="text" id="ind_otro" placeholder="Descripción del coste indirecto">
+        </div>
+        <div class="field-grid" style="margin-bottom:8px;">
+          <div class="field">
+            <label>Importe €</label>
+            <input type="number" id="ind_importe" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div class="field">
+            <label>Observación (opcional)</label>
+            <input type="text" id="ind_obs" placeholder="Ej: factura mayo">
+          </div>
+        </div>
+        <div class="add-form-actions">
+          <button class="btn-confirm" onclick="addIndirecto()">Confirmar</button>
+          <button class="btn-cancel" onclick="toggleForm('formIndirectos')">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════════════════════════════════════════════ HISTORIAL -->
 <section class="section" id="sec-historial">
   <button id="btnImportarParte" onclick="document.getElementById('inputImportarParte').click()"
@@ -1440,6 +1605,8 @@ const SUB_MAESTRO = [{"task":"3.01","cod":"US13CYA070","desc":"Entronque de tubo
 
 const OTROS_MAESTRO = [{"cod":"OC-01","concepto":"Porte de maquinaria a obra","cat":"Transporte"},{"cod":"OC-02","concepto":"Porte de maquinaria retorno","cat":"Transporte"},{"cod":"OC-03","concepto":"Transporte de materiales","cat":"Transporte"},{"cod":"OC-04","concepto":"Transporte de residuos a vertedero","cat":"Transporte"},{"cod":"OC-05","concepto":"Grúa / camión pluma puntual","cat":"Transporte"},{"cod":"OC-06","concepto":"Mensajería y envíos","cat":"Transporte"},{"cod":"OC-10","concepto":"Combustible maquinaria (gasoil)","cat":"Combustible"},{"cod":"OC-11","concepto":"Combustible vehículos","cat":"Combustible"},{"cod":"OC-12","concepto":"Combustible grupo electrógeno","cat":"Combustible"},{"cod":"OC-13","concepto":"AdBlue","cat":"Combustible"},{"cod":"OC-20","concepto":"Compra pequeño material","cat":"Material menor"},{"cod":"OC-21","concepto":"Compra herramienta manual","cat":"Material menor"},{"cod":"OC-22","concepto":"Consumibles (discos, brocas, etc.)","cat":"Material menor"},{"cod":"OC-23","concepto":"Ferretería varios","cat":"Material menor"},{"cod":"OC-24","concepto":"EPIs y material de seguridad","cat":"Material menor"},{"cod":"OC-25","concepto":"Señalización provisional","cat":"Material menor"},{"cod":"OC-30","concepto":"Alquiler equipo puntual","cat":"Alquiler"},{"cod":"OC-31","concepto":"Alquiler aseo/caseta obra","cat":"Alquiler"},{"cod":"OC-32","concepto":"Alquiler grupo electrógeno","cat":"Alquiler"},{"cod":"OC-33","concepto":"Alquiler andamio/plataforma","cat":"Alquiler"},{"cod":"OC-40","concepto":"Dietas extraordinarias","cat":"Personal"},{"cod":"OC-41","concepto":"Alojamiento personal","cat":"Personal"},{"cod":"OC-42","concepto":"Peajes y aparcamientos","cat":"Personal"},{"cod":"OC-43","concepto":"Horas extra puntuales","cat":"Personal"},{"cod":"OC-50","concepto":"Tasas y licencias","cat":"Servicios"},{"cod":"OC-51","concepto":"Ensayos y control de calidad","cat":"Servicios"},{"cod":"OC-52","concepto":"Reparación de maquinaria","cat":"Servicios"},{"cod":"OC-53","concepto":"Limpieza de obra","cat":"Servicios"},{"cod":"OC-54","concepto":"Gestión de residuos puntual","cat":"Servicios"},{"cod":"OC-55","concepto":"Suministro agua/luz provisional","cat":"Servicios"},{"cod":"OC-99","concepto":"Otros (especificar en el parte)","cat":"Otros"}];
 
+const INDIRECTOS_MAESTRO = [{"cod":"CI-01","cat":"Instalaciones de obra","desc":"Casetas de obra (oficina, vestuarios, aseos)"},{"cod":"CI-02","cat":"Instalaciones de obra","desc":"Alquiler de terrenos / acopios"},{"cod":"CI-03","cat":"Instalaciones de obra","desc":"Vallado y cerramiento de obra"},{"cod":"CI-04","cat":"Instalaciones de obra","desc":"Señalización y balizamiento de obra"},{"cod":"CI-05","cat":"Consumos","desc":"Consumo eléctrico / grupo electrógeno"},{"cod":"CI-06","cat":"Consumos","desc":"Consumo de agua"},{"cod":"CI-07","cat":"Consumos","desc":"Combustible no imputable a equipo"},{"cod":"CI-08","cat":"Consumos","desc":"Telecomunicaciones (teléfono, datos)"},{"cod":"CI-09","cat":"Personal indirecto","desc":"Jefe de obra (dedicación)"},{"cod":"CI-10","cat":"Personal indirecto","desc":"Encargado general / Jefe de producción"},{"cod":"CI-11","cat":"Personal indirecto","desc":"Administración de obra"},{"cod":"CI-12","cat":"Personal indirecto","desc":"Topografía"},{"cod":"CI-13","cat":"Seguridad y calidad","desc":"Recurso preventivo / Coordinación SS"},{"cod":"CI-14","cat":"Seguridad y calidad","desc":"EPIs y material de seguridad colectiva"},{"cod":"CI-15","cat":"Seguridad y calidad","desc":"Ensayos y control de calidad"},{"cod":"CI-16","cat":"Seguridad y calidad","desc":"Vigilancia de seguridad ferroviaria (piloto ADIF)"},{"cod":"CI-17","cat":"Gestión","desc":"Gestión de residuos / canon de vertedero"},{"cod":"CI-18","cat":"Gestión","desc":"Tasas, licencias y permisos"},{"cod":"CI-19","cat":"Gestión","desc":"Seguros de obra"},{"cod":"CI-20","cat":"Gestión","desc":"Avales y garantías"},{"cod":"CI-21","cat":"Varios","desc":"Limpieza de obra"},{"cod":"CI-22","cat":"Varios","desc":"Pequeño material y consumibles de obra"},{"cod":"CI-23","cat":"Varios","desc":"Transportes y portes generales"},{"cod":"CI-24","cat":"Varios","desc":"Reposiciones y daños a terceros"},{"cod":"CI-99","cat":"Varios","desc":"Otros (especificar)"}];
+
 const PLAN_PRODUCCION = [{"fecha":"2026-06-05","cod":"US13CYA070","cant":8.0},{"fecha":"2026-06-12","cod":"US13CYA070","cant":8.0},{"fecha":"2026-06-04","cod":"US13CAN100","cant":400.0},{"fecha":"2026-06-05","cod":"US13CAN100","cant":400.0},{"fecha":"2026-06-11","cod":"US13CAN100","cant":400.0},{"fecha":"2026-06-12","cod":"US13CAN100","cant":400.0},{"fecha":"2026-06-01","cod":"US13CAN001","cant":100.0},{"fecha":"2026-06-02","cod":"US13CAN001","cant":100.0},{"fecha":"2026-06-03","cod":"US13CAN001","cant":100.0},{"fecha":"2026-06-08","cod":"US13CAN001","cant":100.0},{"fecha":"2026-06-09","cod":"US13CAN001","cant":100.0},{"fecha":"2026-06-10","cod":"US13CAN001","cant":100.0},{"fecha":"2026-06-01","cod":"US13CAN002","cant":300.0},{"fecha":"2026-06-02","cod":"US13CAN002","cant":300.0},{"fecha":"2026-06-08","cod":"US13CAN002","cant":300.0},{"fecha":"2026-06-09","cod":"US13CAN002","cant":300.0},{"fecha":"2026-06-03","cod":"US13CAN010","cant":200.0},{"fecha":"2026-06-04","cod":"US13CAN010","cant":250.0},{"fecha":"2026-06-05","cod":"US13CAN010","cant":250.0},{"fecha":"2026-06-10","cod":"US13CAN010","cant":200.0},{"fecha":"2026-06-11","cod":"US13CAN010","cant":250.0},{"fecha":"2026-06-12","cod":"US13CAN010","cant":250.0}];
 
 const PARTIDAS_CERT = [{"cod":"US13CYA070","desc":"Entronque de tubos en arqueta o cámara existente","ud":"ud","med":152.0,"pu":310.1509,"venta_ppto":47142.94,"coste_ud":242.221,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"","te":"3.01","to":""},{"cod":"US13CAN100","desc":"Mandrilado de canalización existente","ud":"m","med":31645.0,"pu":1.6981,"venta_ppto":53735.44,"coste_ud":1.4236,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"","te":"3.01","to":""},{"cod":"US13CAN001","desc":"Apertura canaleta de hormigón a mano","ud":"m","med":2500.0,"pu":0.8322,"venta_ppto":2080.42,"coste_ud":0.949,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"","te":"3.01","to":""},{"cod":"US13CAN002","desc":"Apertura canaleta de hormigón a máquina","ud":"m","med":1036.2,"pu":0.2699,"venta_ppto":279.66,"coste_ud":0.4745,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"","te":"3.01","to":""},{"cod":"US13CAN003","desc":"Limpieza de canaleta de hormigón","ud":"m","med":2426.08,"pu":0.3711,"venta_ppto":900.32,"coste_ud":1.1863,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"","te":"3.01","to":""},{"cod":"US13CAN005","desc":"Reposición tapas canaleta hormigón","ud":"m","med":2227.0,"pu":9.4462,"venta_ppto":21036.73,"coste_ud":9.4248,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.01","te":"3.01","to":""},{"cod":"US13CAN010","desc":"Canaleta de hormigón 400x290 mm","ud":"m","med":5100.0,"pu":41.9795,"venta_ppto":214095.2,"coste_ud":43.2414,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.01","te":"3.01","to":""},{"cod":"US13CAN008","desc":"Canaleta de hormigón 220x195 mm","ud":"m","med":7631.0,"pu":27.0454,"venta_ppto":206383.66,"coste_ud":28.0828,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.01","te":"3.01","to":""},{"cod":"US13CAN080","desc":"Tapado de canaleta de hormigón","ud":"m","med":3500.0,"pu":0.8209,"venta_ppto":2873.23,"coste_ud":0.8374,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"","te":"3.01","to":""},{"cod":"US13CAN081","desc":"Sellado de canaleta de hormigón","ud":"m","med":500.0,"pu":0.9109,"venta_ppto":455.44,"coste_ud":0.9305,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"","te":"3.01","to":""},{"cod":"UG13CYA050","desc":"Arqueta de ladrillo in situ, tipo grande (900x900x1500 mm) y tapa hormigón","ud":"ud","med":61.0,"pu":769.3721,"venta_ppto":46931.7,"coste_ud":717.3821,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.02","te":"3.02","to":""},{"cod":"UG01CYA008","desc":"Arqueta de hormigón o in situ (900x1500x1200 mm) y tapa hormigón","ud":"ud","med":102.0,"pu":1390.9334,"venta_ppto":141875.21,"coste_ud":925.2,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.03","te":"3.03","to":""},{"cod":"USP13CYA01aaa","desc":"Cámara de hormigón tipo pequeño 90x90x100 cm y tapa de fundición","ud":"ud","med":370.0,"pu":749.9174,"venta_ppto":277469.44,"coste_ud":739.1908,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.03","te":"3.03","to":""},{"cod":"US13CYA100","desc":"Drenaje de arqueta","ud":"ud","med":51.0,"pu":32.7357,"venta_ppto":1669.52,"coste_ud":42.7405,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.04","te":"3.04","to":""},{"cod":"USP13ZYC01baa","desc":"Zanja de 0,80 a mano, normal","ud":"m","med":30797.7,"pu":12.6849,"venta_ppto":390666.48,"coste_ud":9.6356,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"","te":"3.05","to":""},{"cod":"USP13ZYC01bab","desc":"Zanja de 0,80 a mano, rocoso","ud":"m","med":13913.3,"pu":22.3111,"venta_ppto":310420.64,"coste_ud":56.8824,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"","te":"3.05","to":""},{"cod":"USP13ZYC01aac","desc":"Zanja de 0,60 a mano, balasto","ud":"m","med":44211.0,"pu":15.5075,"venta_ppto":685604.05,"coste_ud":22.8647,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"","te":"3.05","to":""},{"cod":"USP13ZYC02caba","desc":"Canalización 4 T, polietileno 110 mm, normal","ud":"m","med":2000.0,"pu":43.4414,"venta_ppto":86882.73,"coste_ud":46.564,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.06","te":"3.06","to":""},{"cod":"USP13ZYC02cbba","desc":"Canalización 4 T, polietileno 110 mm, bajo vías","ud":"m","med":2000.0,"pu":59.8823,"venta_ppto":119764.58,"coste_ud":155.9891,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.06","te":"3.06","to":""},{"cod":"USP13ZYC02ccba","desc":"Canalización 4 T, polietileno 110 mm, rocoso","ud":"m","med":2000.0,"pu":53.1013,"venta_ppto":106202.5,"coste_ud":66.4595,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.06","te":"3.06","to":""},{"cod":"USP13ZYC02cdba","desc":"Canalización 4 T, polietileno 110 mm, en cruce de carretera","ud":"m","med":2000.0,"pu":59.3537,"venta_ppto":118707.5,"coste_ud":120.312,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.06","te":"3.06","to":""},{"cod":"USP13ZYC02ceba","desc":"Canalización 4 T, polietileno 110 mm, en andén","ud":"m","med":2000.0,"pu":72.0274,"venta_ppto":144054.86,"coste_ud":81.1337,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.06","te":"3.06","to":""},{"cod":"USP13ZYC02caaa","desc":"Canalización 4 T, PVC 110 mm, normal","ud":"m","med":2000.0,"pu":34.8048,"venta_ppto":69609.65,"coste_ud":46.564,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.06","te":"3.06","to":""},{"cod":"USP13ZYC02cbaa","desc":"Canalización 4 T, PVC 110 mm, bajo vías","ud":"m","med":1250.0,"pu":51.257,"venta_ppto":64071.24,"coste_ud":155.9891,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.06","te":"3.06","to":""},{"cod":"USP13ZYC02ccaa","desc":"Canalización 4 T, PVC 110 mm, rocoso","ud":"m","med":1250.0,"pu":44.476,"venta_ppto":55594.94,"coste_ud":66.4595,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.06","te":"3.06","to":""},{"cod":"USP13ZYC02cdaa","desc":"Canalización 4 T, PVC 110 mm, en cruce de carretera","ud":"m","med":1250.0,"pu":50.7172,"venta_ppto":63396.51,"coste_ud":120.312,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.06","te":"3.06","to":""},{"cod":"USP13ZYC02ceaa","desc":"Canalización 4 T, PVC 110 mm, en andén","ud":"m","med":1260.0,"pu":63.3909,"venta_ppto":79872.51,"coste_ud":81.1337,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.06","te":"3.06","to":""},{"cod":"UG13ZYC005","desc":"Canalización 6 T, polietileno 110 mm, con topo GSM-R","ud":"m","med":500.0,"pu":481.4199,"venta_ppto":240709.93,"coste_ud":402.6,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.07","te":"3.07","to":""},{"cod":"USP13TUB02a","desc":"Tubo de acero de 2\" para proteccion de cables","ud":"m","med":1100.0,"pu":23.5593,"venta_ppto":25915.25,"coste_ud":22.5316,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.08","te":"3.08","to":""},{"cod":"US13ZYC045","desc":"Percha para cables, seis fichas","ud":"ud","med":1105.0,"pu":24.6164,"venta_ppto":27201.12,"coste_ud":15.1245,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.08","te":"3.08","to":""},{"cod":"U080154LN302","desc":"Entrada de cables a caseta existente","ud":"ud","med":208.0,"pu":194.176,"venta_ppto":40388.62,"coste_ud":151.0506,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"","te":"3.09","to":""},{"cod":"US14URB100","desc":"Hito de hormigón","ud":"ud","med":477.0,"pu":29.5757,"venta_ppto":14107.59,"coste_ud":35.8056,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.10","te":"3.10","to":""},{"cod":"UCP13ZYC00bda","desc":"Canalización 45T, ACERO 3``","ud":"m","med":225.0,"pu":269.9032,"venta_ppto":60728.23,"coste_ud":241.1164,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.11","te":"3.11","to":""},{"cod":"US14MDT000N","desc":"DESBROCE DE MATORRALES O CORTE DE RAMAS A MANO O A MÁQUINA","ud":"m","med":500.0,"pu":2.3616,"venta_ppto":1180.78,"coste_ud":1.4174,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"","te":"3.11","to":""},{"cod":"US14URB000N","desc":"SUPLEMENTO PARA CANALIZACIÓN CON REPOSICIÓN DE PAVIMENTO","ud":"m","med":250.0,"pu":11.6728,"venta_ppto":2918.21,"coste_ud":10.3152,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"","te":"3.11","to":""},{"cod":"USP13CYA005N","desc":"RECRECIDO DE ARQUETA DE REGISTRO EXISTENTE","ud":"ud","med":156.0,"pu":107.8668,"venta_ppto":16827.23,"coste_ud":98.4973,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"","te":"3.11","to":""},{"cod":"USP13CYA007N","desc":"RECONSTRUCCIÓN DE CÁMARA DE REGISTRO EXISTENTE","ud":"ud","med":154.0,"pu":126.107,"venta_ppto":19420.48,"coste_ud":98.4973,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"","te":"3.11","to":""},{"cod":"US13TUB08562N","desc":"SUMINISTRO E INSTALACIÓN DE PROTECCIÓN DE CABLE AÉREO","ud":"ud","med":51.0,"pu":13.7645,"venta_ppto":701.99,"coste_ud":17.1001,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.12","te":"3.12","to":""},{"cod":"US13CAT002N","desc":"CATA Y REPARACIÓN DE SUBCONDUCTO EXISTENTE EN ZANJA","ud":"ud","med":50.0,"pu":33.2192,"venta_ppto":1660.96,"coste_ud":86.354,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.12","te":"3.12","to":""},{"cod":"US13CAT000N","desc":"CATA Y REPARACIÓN DE SUBCONDUCTO EXISTENTE EN CANALIZACIÓN HORMIGONADA","ud":"ud","med":100.0,"pu":118.2127,"venta_ppto":11821.27,"coste_ud":107.2443,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.12","te":"3.12","to":""},{"cod":"US13TUB08551N","desc":"PROTECCIÓN DE CABLE DE FIBRA ÓPTICA","ud":"ud","med":930.0,"pu":23.2894,"venta_ppto":21659.17,"coste_ud":21.0829,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.12","te":"3.12","to":""},{"cod":"US13CYA0704N","desc":"EJECUCIÓN DE TALADRO DE 110 MM","ud":"ud","med":112.0,"pu":89.6491,"venta_ppto":10040.7,"coste_ud":62.5741,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.13","te":"3.13","to":""},{"cod":"UG01CYA085N","desc":"SUMINISTRO Y MONTAJE DE PELDAÑO DE ACERO","ud":"ud","med":760.0,"pu":10.7282,"venta_ppto":8153.44,"coste_ud":11.7729,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.13","te":"3.13","to":""},{"cod":"US13CYA071aN","desc":"SELLADO DE PASAMUROS","ud":"ud","med":112.0,"pu":18.0378,"venta_ppto":2020.23,"coste_ud":14.5659,"cap":"01.01 Canalizaciones y arquetas","ti":"","ts":"2.13","te":"3.13","to":""},{"cod":"US14DRE010","desc":"Cuneta trapecial en pie de rellenos","ud":"m","med":550.0,"pu":23.4694,"venta_ppto":12908.15,"coste_ud":23.6469,"cap":"01.03 Acondicionamiento del emplazamiento","ti":"","ts":"","te":"3.14","to":""},{"cod":"U080154N205","desc":"Cuneta trapecial en pie de rellenos (0,25 m en base, 0,5 m superior y 0,20 m profundidad)","ud":"m","med":550.0,"pu":16.4297,"venta_ppto":9036.32,"coste_ud":23.6469,"cap":"01.03 Acondicionamiento del emplazamiento","ti":"","ts":"","te":"3.14","to":""},{"cod":"U080154N206","desc":"Cuneta trapecial en pie de rellenos (0,5 m en base, 1m superior y 0,35 m profundidad)","ud":"m","med":550.0,"pu":11.5154,"venta_ppto":6333.47,"coste_ud":23.6469,"cap":"01.03 Acondicionamiento del emplazamiento","ti":"","ts":"","te":"3.14","to":""},{"cod":"US14DRE020","desc":"Rotura y reposición de cuneta","ud":"m","med":250.0,"pu":85.2746,"venta_ppto":21318.66,"coste_ud":94.9596,"cap":"01.03 Acondicionamiento del emplazamiento","ti":"","ts":"","te":"3.14","to":""},{"cod":"US13BDJ019","desc":"Bandeja de rejilla 200x60 mm bajo falso suelo","ud":"m","med":1094.0,"pu":59.0164,"venta_ppto":64563.92,"coste_ud":45.1297,"cap":"01.03 Acondicionamiento del emplazamiento","ti":"","ts":"2.15","te":"3.15","to":""},{"cod":"US13CAN050","desc":"Canaleta PVC de 30x15 mm con tapa","ud":"m","med":965.0,"pu":6.1625,"venta_ppto":5946.85,"coste_ud":8.8914,"cap":"01.03 Acondicionamiento del emplazamiento","ti":"","ts":"2.16","te":"3.16","to":""},{"cod":"U080154LN301","desc":"Adaptación sala cuarto convencional existente","ud":"ud","med":12.0,"pu":33079.4592,"venta_ppto":396953.51,"coste_ud":22475.7432,"cap":"01.05 Edificios Técnicos","ti":"","ts":"2.17","te":"3.17","to":""},{"cod":"UCP12CAB40bdc","desc":"Cable 32FO PKP tendido en monotubo","ud":"m","med":32000.0,"pu":2.1254,"venta_ppto":68012.78,"coste_ud":2.4879,"cap":"02.01 Cables de fibra óptica","ti":"","ts":"2.18","te":"3.18","to":""},{"cod":"US13TUB085","desc":"Tubo de polietileno de alta densidad de 40 mm","ud":"m","med":121250.0,"pu":1.4619,"venta_ppto":177257.19,"coste_ud":1.7023,"cap":"02.01 Cables de fibra óptica","ti":"","ts":"2.19","te":"3.19","to":""},{"cod":"US13TUB087N","desc":"Tubo de polietileno de alta densidad de 40 mm","ud":"m","med":63000.0,"pu":2.2491,"venta_ppto":141693.3,"coste_ud":2.5316,"cap":"02.01 Cables de fibra óptica","ti":"","ts":"2.19","te":"3.19","to":""},{"cod":"US13TUB08514N","desc":"TENDIDO DE MONOTUBO GRAPADO A MURO O TECHO","ud":"m","med":15.0,"pu":1.4619,"venta_ppto":21.93,"coste_ud":1.6586,"cap":"02.01 Cables de fibra óptica","ti":"","ts":"2.19","te":"3.19","to":""},{"cod":"US13TUB08522N","desc":"RETIRADA DE CABLE DE FIBRA ÓPTICA","ud":"m","med":5610.0,"pu":1.4957,"venta_ppto":8390.6,"coste_ud":0.8293,"cap":"02.01 Cables de fibra óptica","ti":"","ts":"","te":"3.20","to":""},{"cod":"US11ABT000N","desc":"SUMINISTRO CONJUNTO DE HERRAJES PARA RETENCIÓN","ud":"ud","med":235.0,"pu":18.8699,"venta_ppto":4434.44,"coste_ud":93.5572,"cap":"02.01 Cables de fibra óptica","ti":"","ts":"2.21","te":"3.21","to":""},{"cod":"US11ABT001N","desc":"SUMINISTRO CONJUNTO DE HERRAJES PARA SUSPENSIÓN","ud":"ud","med":235.0,"pu":22.1087,"venta_ppto":5195.53,"coste_ud":59.1102,"cap":"02.01 Cables de fibra óptica","ti":"","ts":"2.21","te":"3.21","to":""},{"cod":"US13TUB090N","desc":"BAJADA DE CABLE ÓPTICO","ud":"ud","med":15.0,"pu":142.8066,"venta_ppto":2142.1,"coste_ud":99.1265,"cap":"02.01 Cables de fibra óptica","ti":"","ts":"2.18","te":"3.18","to":""},{"cod":"UCP12CAB32PKCPN","desc":"CABLE DE 32 FIBRAS ÓPTICAS MONOMODO G.652 CONCUBIERTA PKCP","ud":"m","med":12000.0,"pu":3.9134,"venta_ppto":46961.21,"coste_ud":5.9012,"cap":"02.01 Cables de fibra óptica","ti":"","ts":"2.18","te":"3.18","to":""},{"cod":"US13TUB086N","desc":"SUMINISTRO DE MONOTUBO IGNÍFUGO","ud":"m","med":2000.0,"pu":10.8856,"venta_ppto":21771.29,"coste_ud":6.2415,"cap":"02.01 Cables de fibra óptica","ti":"","ts":"2.19","te":"3.19","to":""},{"cod":"UCP12CAB40ddc","desc":"Cable 96FO PKP tendido en monotubo","ud":"m","med":40000.0,"pu":3.5198,"venta_ppto":140793.66,"coste_ud":2.9663,"cap":"02.01 Cables de fibra óptica","ti":"","ts":"2.18","te":"3.18","to":""},{"cod":"UCP12CAB96TKTN","desc":"Cable 96 TKT tendido en subconducto","ud":"m","med":4000.0,"pu":4.0371,"venta_ppto":16148.54,"coste_ud":3.3853,"cap":"02.01 Cables de fibra óptica","ti":"","ts":"2.18","te":"3.18","to":""},{"cod":"MNC22RFO100N","desc":"KIT DE SELLADO DE PUERTO CIRCULAR","ud":"","med":120.0,"pu":8.2542,"venta_ppto":990.5,"coste_ud":24.4495,"cap":"02.03 Empalmes","ti":"","ts":"2.22","te":"3.22","to":""},{"cod":"US13TUB08561N","desc":"UNIDAD DE ALMACENAMIENTO DE CABLE ÓPTICO","ud":"","med":20.0,"pu":30.5653,"venta_ppto":611.31,"coste_ud":45.4459,"cap":"02.03 Empalmes","ti":"","ts":"2.22","te":"3.22","to":""},{"cod":"UCP22RFO04ab","desc":"Empalme de segregación a 1 cable 32 FO","ud":"ud","med":35.0,"pu":470.2081,"venta_ppto":16457.28,"coste_ud":864.5,"cap":"02.03 Empalmes","ti":"","ts":"2.22","te":"3.22","to":""},{"cod":"UCP22RFO04bd","desc":"EMPALME DE SEGREGACIÓN A DOS CABLES DE 96 FIBRAS","ud":"","med":5.0,"pu":2364.2314,"venta_ppto":11821.16,"coste_ud":1292.0,"cap":"02.03 Empalmes","ti":"","ts":"2.22","te":"3.22","to":""},{"cod":"UCP22RFO03d","desc":"Empalme en recto cables 96 FO","ud":"ud","med":8.0,"pu":1182.1719,"venta_ppto":9457.38,"coste_ud":1102.0,"cap":"02.03 Empalmes","ti":"","ts":"2.22","te":"3.22","to":""},{"cod":"UCP22RFO02ad","desc":"CAJA DE EMPALME Y SEGREGACIÓN  A 1 CABLE DE 96 FIBRAS ÓPTICAS","ud":"ud","med":5.0,"pu":632.9417,"venta_ppto":3164.71,"coste_ud":656.6779,"cap":"02.03 Empalmes","ti":"","ts":"2.22","te":"3.22","to":""},{"cod":"UCP22RFO01d","desc":"Caja empalme recto 96 FO","ud":"ud","med":8.0,"pu":550.366,"venta_ppto":4402.93,"coste_ud":706.0674,"cap":"02.03 Empalmes","ti":"","ts":"2.22","te":"3.22","to":""},{"cod":"UC2020RCD03N","desc":"Switch acceso IPMM 12 puertos","ud":"ud","med":50.0,"pu":1342.544,"venta_ppto":67127.2,"coste_ud":1641.5712,"cap":"03.03 Redes de datos","ti":"","ts":"2.23","te":"3.23","to":""},{"cod":"UC2020RCD04N","desc":"Switch acceso IPMM 24 puertos","ud":"ud","med":50.0,"pu":1735.9116,"venta_ppto":86795.58,"coste_ud":1641.5712,"cap":"03.03 Redes de datos","ti":"","ts":"2.23","te":"3.23","to":""},{"cod":"UC2020RCD06N","desc":"Switch acceso IPMM industrial 12 puertos","ud":"ud","med":50.0,"pu":1290.095,"venta_ppto":64504.75,"coste_ud":1202.5861,"cap":"03.03 Redes de datos","ti":"","ts":"2.23","te":"3.23","to":""},{"cod":"UC2020RCD07N","desc":"Switch acceso IPMM industrial 8 puertos","ud":"ud","med":50.0,"pu":1132.748,"venta_ppto":56637.4,"coste_ud":1202.5861,"cap":"03.03 Redes de datos","ti":"","ts":"2.23","te":"3.23","to":""},{"cod":"UC2020RCD08N","desc":"Switch acceso IPMM industrial 4 puertos","ud":"ud","med":50.0,"pu":975.4009,"venta_ppto":48770.05,"coste_ud":1202.5861,"cap":"03.03 Redes de datos","ti":"","ts":"2.23","te":"3.23","to":""},{"cod":"UC2020RCD09N","desc":"Switch acceso IPMM VF","ud":"ud","med":50.0,"pu":3696.1934,"venta_ppto":184809.67,"coste_ud":1503.7832,"cap":"03.03 Redes de datos","ti":"","ts":"2.23","te":"3.23","to":""},{"cod":"UC2020RCD10N","desc":"Nodo IPMM Legacy","ud":"ud","med":50.0,"pu":7193.1391,"venta_ppto":359656.95,"coste_ud":6076.637,"cap":"03.03 Redes de datos","ti":"","ts":"2.24","te":"3.24","to":""},{"cod":"UC22SFO010","desc":"Subbastidor para UCC, UMR y USO","ud":"ud","med":1.0,"pu":1125.0336,"venta_ppto":1125.03,"coste_ud":1581.1884,"cap":"03.04 Sistema de supervisión de fibra óptica","ti":"","ts":"2.25","te":"3.25","to":""},{"cod":"UC22SFO050","desc":"Unidad de medidas reflectométricas (UMR)","ud":"ud","med":1.0,"pu":15128.9872,"venta_ppto":15128.99,"coste_ud":9061.3265,"cap":"03.04 Sistema de supervisión de fibra óptica","ti":"","ts":"2.26","te":"3.25","to":""},{"cod":"UC22SFO060","desc":"Unidad de seleccion óptica (USO) 8 salidas","ud":"ud","med":1.0,"pu":10107.208,"venta_ppto":10107.21,"coste_ud":6563.798,"cap":"03.04 Sistema de supervisión de fibra óptica","ti":"","ts":"2.27","te":"3.25","to":""},{"cod":"UC22SFO080","desc":"Unidad de control y comunicaciones (UCC)","ud":"ud","med":1.0,"pu":1564.3615,"venta_ppto":1564.36,"coste_ud":1295.9672,"cap":"03.04 Sistema de supervisión de fibra óptica","ti":"","ts":"2.28","te":"3.25","to":""},{"cod":"UC22SFO110","desc":"Activación del SSFO","ud":"ud","med":1.0,"pu":38088.3286,"venta_ppto":38088.33,"coste_ud":13393.4515,"cap":"03.04 Sistema de supervisión de fibra óptica","ti":"","ts":"","te":"3.26","to":""},{"cod":"UC22ENE002_1","desc":"Bastidor 19\" misceláneo 2000x600x600 mm","ud":"ud","med":50.0,"pu":738.6269,"venta_ppto":36931.35,"coste_ud":968.0856,"cap":"07.01 Energía","ti":"","ts":"2.29","te":"3.29","to":""},{"cod":"UC22ENE005_1","desc":"Subbastidor de rectificadores para SAI","ud":"ud","med":50.0,"pu":135.8569,"venta_ppto":6792.84,"coste_ud":126.5388,"cap":"07.01 Energía","ti":"","ts":"2.29","te":"3.29","to":""},{"cod":"UC22ENE006_1","desc":"Subbastidor de órganos comunes SAI","ud":"ud","med":50.0,"pu":232.1858,"venta_ppto":11609.29,"coste_ud":190.7778,"cap":"07.01 Energía","ti":"","ts":"2.29","te":"3.29","to":""},{"cod":"UC22ENE010_1","desc":"Módulo de control y alarmas SAI","ud":"ud","med":50.0,"pu":350.7247,"venta_ppto":17536.23,"coste_ud":288.5328,"cap":"07.01 Energía","ti":"","ts":"2.29","te":"3.29","to":""},{"cod":"UC22ENE011_1","desc":"Módulo de distribución DC 48Vcc SAI","ud":"ud","med":50.0,"pu":280.3841,"venta_ppto":14019.2,"coste_ud":280.1538,"cap":"07.01 Energía","ti":"","ts":"2.29","te":"3.29","to":""},{"cod":"UC22ENE012_1","desc":"Módulo de protección de baterías SAI","ud":"ud","med":50.0,"pu":302.5264,"venta_ppto":15126.32,"coste_ud":175.8818,"cap":"07.01 Energía","ti":"","ts":"2.29","te":"3.29","to":""},{"cod":"UC22ENE015_1","desc":"Módulo rectificador (48V/2500W-50A) SAI","ud":"ud","med":50.0,"pu":287.8061,"venta_ppto":14390.3,"coste_ud":288.5328,"cap":"07.01 Energía","ti":"","ts":"2.29","te":"3.29","to":""},{"cod":"UC22ENE020_1","desc":"Sistema de onduladores 230 Vca SAI","ud":"ud","med":50.0,"pu":2248.2903,"venta_ppto":112414.52,"coste_ud":2435.8593,"cap":"07.01 Energía","ti":"","ts":"2.29","te":"3.29","to":""},{"cod":"UC22ENE025_1","desc":"Sistema de alimentación ininterrumpida","ud":"ud","med":50.0,"pu":4204.8611,"venta_ppto":210243.06,"coste_ud":1821.3993,"cap":"07.01 Energía","ti":"","ts":"2.29","te":"3.29","to":""},{"cod":"UC22ENE030_1","desc":"Batería de plomo hermético 100 Ah en rack","ud":"ud","med":5.0,"pu":699.144,"venta_ppto":3495.72,"coste_ud":762.4118,"cap":"07.01 Energía","ti":"","ts":"2.29","te":"3.29","to":""},{"cod":"UC22ENE038_1","desc":"Batería de plomo hermético 190 Ah en rack","ud":"ud","med":72.0,"pu":1318.7148,"venta_ppto":94947.47,"coste_ud":1321.0118,"cap":"07.01 Energía","ti":"","ts":"2.29","te":"3.29","to":""},{"cod":"UETTELCO01N","desc":"ENCARGADOS DE TRABAJOS (TELECOMUNICACIONES)","ud":"h","med":5440.0,"pu":57.6894,"venta_ppto":313830.42,"coste_ud":38.25,"cap":"07.01 Energía","ti":"1.01","ts":"","te":"","to":""},{"cod":"UETTELCO02N","desc":"JORNADA DE ALQUILER DE VAGONETA","ud":"d","med":100.0,"pu":1268.4924,"venta_ppto":126849.24,"coste_ud":778.6027,"cap":"07.01 Energía","ti":"1.02","ts":"","te":"","to":""},{"cod":"UETTELCO03N","desc":"ENCARGADOS DE TRABAJOS (IISS)","ud":"h","med":840.0,"pu":59.6799,"venta_ppto":50131.09,"coste_ud":38.25,"cap":"07.01 Energía","ti":"1.03","ts":"","te":"","to":""},{"cod":"UETTELCO04N","desc":"ENCARGADOS DE TRABAJOS (SSEE)","ud":"h","med":600.0,"pu":91.6958,"venta_ppto":55017.48,"coste_ud":38.25,"cap":"07.01 Energía","ti":"1.04","ts":"","te":"","to":""},{"cod":"UETTELCO05N","desc":"ENCARGADOS DE TRABAJOS (CATENARIA)","ud":"h","med":100.0,"pu":57.6557,"venta_ppto":5765.57,"coste_ud":38.25,"cap":"07.01 Energía","ti":"1.05","ts":"","te":"","to":""},{"cod":"UG10DOC001N","desc":"ISA o ASBO","ud":"ud","med":1.0,"pu":3400.4255,"venta_ppto":3400.43,"coste_ud":2872.6195,"cap":"07.01 Energía","ti":"","ts":"","te":"","to":"4.01"},{"cod":"UG10DOC002N","desc":"INTEROPERABILIDAD POR NOBO","ud":"ud","med":1.0,"pu":16497.5983,"venta_ppto":16497.6,"coste_ud":13936.88,"cap":"07.01 Energía","ti":"","ts":"","te":"","to":"4.01"},{"cod":"UG10DOC003N","desc":"AS BUILT","ud":"ud","med":1.0,"pu":3107.469,"venta_ppto":3107.47,"coste_ud":2625.135,"cap":"07.01 Energía","ti":"","ts":"","te":"","to":"4.01"},{"cod":"G0613N001","desc":"Clasificación y recogida selectiva","ud":"t","med":133.587,"pu":2.9688,"venta_ppto":396.59,"coste_ud":2.508,"cap":"13.01 Gestión de Residuos","ti":"","ts":"","te":"","to":"6.01"},{"cod":"G0613N002","desc":"Gestión de RNP no pétreos","ud":"t","med":4.167,"pu":14.4617,"venta_ppto":60.26,"coste_ud":12.217,"cap":"13.01 Gestión de Residuos","ti":"","ts":"","te":"","to":"6.01"},{"cod":"G0613N003","desc":"Gestión de RNP pétreos","ud":"t","med":129.339,"pu":6.4662,"venta_ppto":836.33,"coste_ud":5.4625,"cap":"13.01 Gestión de Residuos","ti":"","ts":"","te":"","to":"6.01"},{"cod":"G0613N004N","desc":"Gestión de residuos peligrosos","ud":"t","med":0.08,"pu":366.0973,"venta_ppto":29.29,"coste_ud":309.2725,"cap":"13.01 Gestión de Residuos","ti":"","ts":"","te":"","to":"6.01"},{"cod":"G0613N006N","desc":"CONTRATACIÓN GESTOR DE RESIDUOS AUTORIZADO","ud":"ud","med":1.0,"pu":1263.4544,"venta_ppto":1263.45,"coste_ud":1067.344,"cap":"13.01 Gestión de Residuos","ti":"","ts":"","te":"","to":"6.01"},{"cod":"G0613N007N","desc":"INSTALACIÓN DE PUNTO DE LIMPIEZA CANALETAS DE HORMIGONERAS","ud":"ud","med":10.0,"pu":187.4962,"venta_ppto":1874.96,"coste_ud":158.3935,"cap":"13.01 Gestión de Residuos","ti":"","ts":"","te":"","to":"6.01"},{"cod":"UG25IAM010","desc":"Jalonamiento temporal de protección GSM-R","ud":"m","med":500.0,"pu":0.3711,"venta_ppto":185.55,"coste_ud":0.3135,"cap":"13.02 Integración ambiental","ti":"","ts":"","te":"","to":"7.01"},{"cod":"UG25IAM015N","desc":"TÉCNICO ESPECIALISTA EN MEDIO AMBIENTE, CON EXPERIENCIA PARA REALIZAR RECORRIDOS DE FAUNA Y FLORA (ACTUACIÓN DURANTE REPLANTEO)","ud":"día","med":6.0,"pu":252.0454,"venta_ppto":1512.27,"coste_ud":237.5,"cap":"13.02 Integración ambiental","ti":"","ts":"","te":"","to":"7.01"},{"cod":"UC22RFO008","desc":"Armario repartidor con 192 conectores y 128 bandejas de fusión","ud":"ud","med":5.0,"pu":6011.5519,"venta_ppto":30057.76,"coste_ud":6670.1455,"cap":"13.02 Integración ambiental","ti":"","ts":"2.30","te":"3.30","to":""},{"cod":"UC22RFO009","desc":"Unidad de interconexión de 72 conectores para repartidor óptico","ud":"ud","med":50.0,"pu":776.3443,"venta_ppto":38817.22,"coste_ud":793.2075,"cap":"13.02 Integración ambiental","ti":"","ts":"2.31","te":"3.30","to":""},{"cod":"UCP22RFO06d","desc":"Conectorización 32 FO a repartidor","ud":"ud","med":253.0,"pu":565.7724,"venta_ppto":143140.4,"coste_ud":646.0,"cap":"13.02 Integración ambiental","ti":"","ts":"2.32","te":"3.30","to":""},{"cod":"UCP22RFO07i","desc":"Medidas ópticas de reflectometría de 1 fibras","ud":"ud","med":8832.0,"pu":16.992,"venta_ppto":150072.91,"coste_ud":6.65,"cap":"13.02 Integración ambiental","ti":"","ts":"","te":"3.30","to":""},{"cod":"UC22RFO008AN","desc":"Repartidor mural ETSI 750x600x300","ud":"ud","med":10.0,"pu":612.8798,"venta_ppto":6128.8,"coste_ud":530.284,"cap":"13.02 Integración ambiental","ti":"","ts":"2.33","te":"3.30","to":""},{"cod":"UC22RFO008BN","desc":"Repartidor mural ETSI 925x600x300","ud":"ud","med":137.0,"pu":629.748,"venta_ppto":86275.48,"coste_ud":553.559,"cap":"13.02 Integración ambiental","ti":"","ts":"2.33","te":"3.30","to":""},{"cod":"UC22RFO008CN","desc":"Subastidor de repartidor óptico para 24 FO","ud":"ud","med":5.0,"pu":281.1375,"venta_ppto":1405.69,"coste_ud":212.4497,"cap":"13.02 Integración ambiental","ti":"","ts":"2.34","te":"3.30","to":""},{"cod":"UC22RFO008DN","desc":"Subastidor de repartidor óptico para 72 FO","ud":"ud","med":57.0,"pu":371.1015,"venta_ppto":21152.79,"coste_ud":347.4447,"cap":"13.02 Integración ambiental","ti":"","ts":"2.34","te":"3.30","to":""},{"cod":"UC22RFO008EN","desc":"Subastidor de repartidor óptico para 120 FO","ud":"ud","med":76.0,"pu":472.311,"venta_ppto":35895.64,"coste_ud":491.7497,"cap":"13.02 Integración ambiental","ti":"","ts":"2.34","te":"3.30","to":""},{"cod":"UCP22RFO07iN","desc":"Medidas ópticas de polarización (PMD)","ud":"ud","med":1728.0,"pu":30.9364,"venta_ppto":53458.05,"coste_ud":9.5,"cap":"13.02 Integración ambiental","ti":"","ts":"","te":"3.30","to":""},{"cod":"UC22RFO017aN","desc":"BANDEJA DE EMPALME/CONECTORES PARA REPARTIDOR","ud":"ud","med":282.0,"pu":65.9998,"venta_ppto":18611.95,"coste_ud":115.1079,"cap":"13.02 Integración ambiental","ti":"","ts":"2.35","te":"3.30","to":""},{"cod":"UC22RFO517","desc":"ARMARIO DE 19'' DE PROPÓSITO GENERAL","ud":"ud","med":68.0,"pu":523.433,"venta_ppto":35593.45,"coste_ud":491.7497,"cap":"13.02 Integración ambiental","ti":"","ts":"2.36","te":"3.30","to":""},{"cod":"UC22RFO008N","desc":"ARMARIO REPARTIDOR PARA EMPALME","ud":"ud","med":11.0,"pu":2452.9472,"venta_ppto":26982.42,"coste_ud":2311.8547,"cap":"13.02 Integración ambiental","ti":"","ts":"2.30","te":"3.30","to":""},{"cod":"UC22RFO017N","desc":"UNIDAD DE EMPALME DE 32 BANDEJAS EN CIRCUITO INDIVIDUAL","ud":"ud","med":45.0,"pu":655.1966,"venta_ppto":29483.85,"coste_ud":366.8261,"cap":"13.02 Integración ambiental","ti":"","ts":"2.37","te":"3.30","to":""},{"cod":"UC22RFO009N","desc":"MODULO DE INTERCONEXIÓN EQUIPADO CON 6 BANDEJAS DE 12 CONECTORES.","ud":"ud","med":60.0,"pu":776.3443,"venta_ppto":46580.66,"coste_ud":793.2075,"cap":"13.02 Integración ambiental","ti":"","ts":"2.38","te":"3.30","to":""},{"cod":"UCP22RFO06g","desc":"CONECTORIZACIÓN DE HASTA 96 FIBRAS DE UNA PUNTA DE CABLE MULTIFIBRA A REPARTIDOR ÓPTICO","ud":"ud","med":2.0,"pu":1641.9892,"venta_ppto":3283.98,"coste_ud":1463.0,"cap":"13.02 Integración ambiental","ti":"","ts":"2.32","te":"3.30","to":""}];
@@ -1481,6 +1648,8 @@ document.addEventListener('DOMContentLoaded', () => {
   poblarSelectOtros();
 
   // Cargar borrador si existe
+  poblarSelectAlquileres();
+  poblarSelectIndirectos();
   cargarBorrador();
   actualizarHistorial();
   actualizarBadges();
@@ -1581,7 +1750,7 @@ function showTab(tab) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   document.getElementById('sec-' + tab).classList.add('active');
-  const tabs = ['cabecera','personal','maquinaria','materiales','subcontratas','otros','almacen','produccion','costes','historial','informe'];
+  const tabs = ['cabecera','personal','maquinaria','alquileres','moexterna','materiales','subcontratas','otros','almacen','produccion','costes','indirectos','historial','informe'];
   document.querySelectorAll('.nav-tab')[tabs.indexOf(tab)].classList.add('active');
   if (tab === 'informe') renderInforme();
   if (tab === 'almacen') renderAlmacen();
@@ -1602,7 +1771,7 @@ function toggleForm(id) {
 function poblarSelectPersonal() {
   const sel = document.getElementById('p_select');
   // Grupos por tipo
-  const grupos = { ENC: 'Encargados y Técnicos', MOD: 'Operarios y Oficiales', MOI: 'Mano de obra indirecta' };
+  const grupos = { ENC: 'Jefes de equipo y Técnicos', MOD: 'Operarios y Oficiales', MOI: 'Mano de obra indirecta' };
   const porGrupo = {};
   PERSONAL_MAESTRO.forEach(p => {
     const g = p.tipo || 'MOD';
@@ -1616,7 +1785,7 @@ function poblarSelectPersonal() {
     porGrupo[tipo].forEach((p, i) => {
       const opt = document.createElement('option');
       opt.value = PERSONAL_MAESTRO.indexOf(p);
-      opt.textContent = `${p.num ? p.num + ' · ' : ''}${p.nombre} (${p.cat}) — ${p.ch}€/h`;
+      opt.textContent = `${p.num ? p.num + ' · ' : ''}${p.nombre} (${p.cat})`;
       grp.appendChild(opt);
     });
     sel.appendChild(grp);
@@ -1629,6 +1798,8 @@ function poblarSelectMaquinaria() {
   const grupos = { MAQ: 'Maquinaria pesada', VEH: 'Vehículos', AUX: 'Medios auxiliares' };
   const porGrupo = {};
   MAQ_MAESTRO.forEach(m => {
+    // Solo maquinaria y vehículos PROPIOS de Telice (el resto va en Alquileres)
+    if ((m.prov || '').trim().toLowerCase() !== 'telice') return;
     const g = m.tipo || 'AUX';
     if (!porGrupo[g]) porGrupo[g] = [];
     porGrupo[g].push(m);
@@ -2173,6 +2344,275 @@ function recogerConsumoMat() {
 }
 
 // ═══════════════════════════════════════════
+// ALQUILERES (se guardan en state.maquinaria con _alquiler=true)
+// ═══════════════════════════════════════════
+function poblarSelectAlquileres() {
+  const sel = document.getElementById('alq_select');
+  if (!sel) return;
+  // Equipos del maestro que NO son propios de Telice
+  MAQ_MAESTRO.forEach((m, i) => {
+    const prov = (m.prov || '').trim().toLowerCase();
+    if (prov === 'telice') return;
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `${m.cod} · ${m.desc}${m.prov ? ' ('+m.prov+')' : ''}${m.cd ? ' — '+m.cd+'€/día' : m.ch ? ' — '+m.ch+'€/h' : ''}`;
+    sel.appendChild(opt);
+  });
+}
+
+function onAlqSelect() {
+  const idx = document.getElementById('alq_select').value;
+  if (idx === '') return;
+  const m = MAQ_MAESTRO[parseInt(idx)];
+  if (!m) return;
+  document.getElementById('alq_cod').value  = m.cod;
+  document.getElementById('alq_desc').value = m.desc;
+  document.getElementById('alq_prov').value = m.prov || '';
+  const tipoSel = document.getElementById('alq_tipo');
+  for (let o of tipoSel.options) if (o.value === m.tipo) { o.selected = true; break; }
+  document.getElementById('alq_unidad').value = (m.cd && !m.ch) ? 'dia' : (m.ch && !m.cd) ? 'hora' : 'dia';
+  const info = document.getElementById('alq_coste_info');
+  info.style.display = 'block';
+  const tarifas = [];
+  if (m.ch) tarifas.push(`${m.ch} €/hora`);
+  if (m.cd) tarifas.push(`${m.cd} €/día`);
+  info.textContent = `${m.tipo} · ${m.prov || 'Alquiler'} · ${tarifas.length ? tarifas.join(' · ') : 'tarifa no definida'}`;
+  if (!document.getElementById('alq_horas').value) document.getElementById('alq_horas').value = 1;
+  onAlqUnidadChange();
+}
+
+function onAlqUnidadChange() {
+  const idx = document.getElementById('alq_select').value;
+  const m = idx !== '' ? MAQ_MAESTRO[parseInt(idx)] : null;
+  const unidad = document.getElementById('alq_unidad').value;
+  if (m) {
+    const tarifa = unidad === 'hora' ? m.ch : m.cd;
+    document.getElementById('alq_tarifa').value = tarifa || '';
+  }
+  calcAlqCoste();
+}
+
+function calcAlqCoste() {
+  const cant   = parseFloat(document.getElementById('alq_horas').value) || 0;
+  const tarifa = parseFloat(document.getElementById('alq_tarifa').value) || 0;
+  const out = document.getElementById('alq_coste_total');
+  out.value = (cant > 0 && tarifa > 0)
+    ? (cant*tarifa).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €' : '';
+}
+
+function addAlquiler() {
+  const cod = document.getElementById('alq_cod').value.trim();
+  const desc = document.getElementById('alq_desc').value.trim();
+  const prov = document.getElementById('alq_prov').value.trim();
+  const horas = parseFloat(document.getElementById('alq_horas').value) || 0;
+  const unidad = document.getElementById('alq_unidad').value;
+  const tarifa = parseFloat(document.getElementById('alq_tarifa').value) || 0;
+  const tipo = document.getElementById('alq_tipo').value;
+  if (!desc) { showToast('Introduce la descripción', 'error'); return; }
+  if (horas <= 0) { showToast('Introduce el tiempo de uso', 'error'); return; }
+
+  state.maquinaria.push({
+    cod, desc, prov, horas, tipo, unidad, tarifa,
+    costeh: unidad === 'hora' ? tarifa : null,
+    costed: unidad === 'dia'  ? tarifa : null,
+    ud: unidad === 'dia' ? 'día' : 'h',
+    coste_maq: Math.round(horas * tarifa * 100) / 100,
+    _alquiler: true
+  });
+  renderMaquinaria(); renderAlquileres();
+  actualizarBadges();
+  toggleForm('formAlquileres');
+  ['alq_select','alq_cod','alq_desc','alq_prov','alq_horas','alq_tarifa','alq_coste_total'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  document.getElementById('alq_unidad').value = 'dia';
+  document.getElementById('alq_coste_info').style.display = 'none';
+  showToast('Alquiler añadido ✓', 'success');
+}
+
+function renderAlquileres() {
+  const lista = document.getElementById('listaAlquileres');
+  const totalLbl = document.getElementById('totalCosteAlq');
+  if (!lista) return;
+  lista.innerHTML = '';
+  let total = 0;
+  state.maquinaria.forEach((m, i) => {
+    if (!m._alquiler) return;
+    total += m.coste_maq || 0;
+    const div = document.createElement('div');
+    div.className = 'data-row';
+    div.style.gridTemplateColumns = '1fr';
+    div.innerHTML = `
+      <button class="del-btn" onclick="delItem('maquinaria',${i})">×</button>
+      <div style="padding-right:24px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+          <span class="row-tag">${m.cod || '—'}</span>
+          <span style="font-size:13px;font-weight:500;">${m.desc}</span>
+        </div>
+        <div class="row-meta">
+          ${m.prov?`<span class="meta-item">Proveedor: <span>${m.prov}</span></span>`:''}
+          <span class="meta-item">Uso: <span style="color:var(--accent);font-weight:500;">${m.horas} ${m.unidad === 'dia' ? (m.horas==1?'día':'días') : 'h'}</span></span>
+          ${m.tarifa?`<span class="meta-item">Tarifa: <span>${m.tarifa.toLocaleString('es-ES',{maximumFractionDigits:2})} €/${m.unidad==='dia'?'día':'h'}</span></span>`:''}
+          ${m.coste_maq?`<span class="meta-item">Coste: <span style="color:var(--red);font-weight:500;">${m.coste_maq.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €</span></span>`:''}
+          <span class="meta-item">Tipo: <span>${m.tipo}</span></span>
+        </div>
+      </div>`;
+    lista.appendChild(div);
+  });
+  if (totalLbl) totalLbl.textContent = total.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+}
+
+// ═══════════════════════════════════════════
+// M.O EXTERNA (se guarda en state.personal con _externo=true)
+// ═══════════════════════════════════════════
+function calcMOECoste() {
+  const h = parseFloat(document.getElementById('moe_horas').value) || 0;
+  const t = parseFloat(document.getElementById('moe_tarifa').value) || 0;
+  const out = document.getElementById('moe_coste_total');
+  out.value = (h > 0 && t > 0)
+    ? (h*t).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €' : '';
+}
+
+function addMOExterna() {
+  const nombre = document.getElementById('moe_nombre').value.trim();
+  const empresa = document.getElementById('moe_empresa').value.trim();
+  const horas = parseFloat(document.getElementById('moe_horas').value) || 0;
+  const tarifa = parseFloat(document.getElementById('moe_tarifa').value) || 0;
+  if (!nombre) { showToast('Introduce el nombre o puesto', 'error'); return; }
+  if (horas <= 0) { showToast('Introduce las horas', 'error'); return; }
+  if (tarifa <= 0) { showToast('Introduce la tarifa €/h', 'error'); return; }
+
+  state.personal.push({
+    num: '', nombre: nombre + (empresa ? ' · ' + empresa : ''), horas,
+    dieta: 'sin_dieta', km: 0, tipo: 'EXT', incidencia: '',
+    costeh: tarifa, coste_mod: Math.round(horas * tarifa * 100) / 100,
+    pernocta: false, coste_dieta: 0,
+    _externo: true, empresa
+  });
+  renderPersonal(); renderMOExterna();
+  actualizarBadges();
+  toggleForm('formMOExterna');
+  ['moe_nombre','moe_empresa','moe_horas','moe_tarifa','moe_coste_total'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  showToast('Trabajador externo añadido ✓', 'success');
+}
+
+function renderMOExterna() {
+  const lista = document.getElementById('listaMOExterna');
+  const totalLbl = document.getElementById('totalCosteMOE');
+  if (!lista) return;
+  lista.innerHTML = '';
+  let total = 0;
+  state.personal.forEach((p, i) => {
+    if (!p._externo) return;
+    total += p.coste_mod || 0;
+    const div = document.createElement('div');
+    div.className = 'data-row';
+    div.style.gridTemplateColumns = '1fr';
+    div.innerHTML = `
+      <button class="del-btn" onclick="delItem('personal',${i})">×</button>
+      <div style="padding-right:24px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+          <span style="font-size:13px;font-weight:500;">${p.nombre}</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--accent);">${p.horas}h</span>
+        </div>
+        <div class="row-meta">
+          <span class="meta-item">Tarifa: <span>${(p.costeh||0).toLocaleString('es-ES',{maximumFractionDigits:2})} €/h</span></span>
+          <span class="meta-item">Coste: <span style="color:var(--red);font-weight:500;">${(p.coste_mod||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €</span></span>
+        </div>
+      </div>`;
+    lista.appendChild(div);
+  });
+  if (totalLbl) totalLbl.textContent = total.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+}
+
+// ═══════════════════════════════════════════
+// COSTES INDIRECTOS (solo jefe de obra)
+// ═══════════════════════════════════════════
+function poblarSelectIndirectos() {
+  const sel = document.getElementById('ind_select');
+  if (!sel) return;
+  const cats = {};
+  INDIRECTOS_MAESTRO.forEach((c, i) => {
+    if (!cats[c.cat]) cats[c.cat] = [];
+    cats[c.cat].push({...c, _i: i});
+  });
+  Object.entries(cats).forEach(([cat, items]) => {
+    const grp = document.createElement('optgroup');
+    grp.label = cat;
+    items.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c._i;
+      opt.textContent = `${c.cod} · ${c.desc}`;
+      grp.appendChild(opt);
+    });
+    sel.appendChild(grp);
+  });
+}
+
+function onIndSelect() {
+  const idx = document.getElementById('ind_select').value;
+  const wrap = document.getElementById('ind_otro_wrap');
+  if (idx === '') { wrap.style.display = 'none'; return; }
+  const c = INDIRECTOS_MAESTRO[parseInt(idx)];
+  wrap.style.display = (c && c.cod === 'CI-99') ? 'block' : 'none';
+}
+
+function addIndirecto() {
+  const idx = document.getElementById('ind_select').value;
+  if (idx === '') { showToast('Selecciona un concepto', 'error'); return; }
+  const c = INDIRECTOS_MAESTRO[parseInt(idx)];
+  const importe = parseFloat(document.getElementById('ind_importe').value) || 0;
+  if (importe <= 0) { showToast('Introduce el importe', 'error'); return; }
+  let concepto = c.desc;
+  if (c.cod === 'CI-99') {
+    const otro = document.getElementById('ind_otro').value.trim();
+    if (!otro) { showToast('Especifica el concepto', 'error'); return; }
+    concepto = otro;
+  }
+  const obs = document.getElementById('ind_obs').value.trim();
+  state.indirectos.push({ cod: c.cod, cat: c.cat, concepto, importe, obs });
+  renderIndirectos();
+  actualizarBadges();
+  toggleForm('formIndirectos');
+  ['ind_select','ind_importe','ind_obs','ind_otro'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  document.getElementById('ind_otro_wrap').style.display = 'none';
+  showToast('Coste indirecto añadido ✓', 'success');
+}
+
+function renderIndirectos() {
+  const lista = document.getElementById('listaIndirectos');
+  const totalLbl = document.getElementById('totalCosteInd');
+  if (!lista) return;
+  lista.innerHTML = '';
+  let total = 0;
+  state.indirectos.forEach((c, i) => {
+    total += c.importe || 0;
+    const div = document.createElement('div');
+    div.className = 'data-row';
+    div.style.gridTemplateColumns = '1fr';
+    div.innerHTML = `
+      <button class="del-btn" onclick="delItem('indirectos',${i})">×</button>
+      <div style="padding-right:24px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+          <span class="row-tag">${c.cod}</span>
+          <span style="font-size:13px;font-weight:500;">${c.concepto}</span>
+        </div>
+        <div class="row-meta">
+          <span class="meta-item">${c.cat}</span>
+          <span class="meta-item">Importe: <span style="color:var(--red);font-weight:500;">${c.importe.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} €</span></span>
+          ${c.obs?`<span class="meta-item">📝 <span>${c.obs}</span></span>`:''}
+        </div>
+      </div>`;
+    lista.appendChild(div);
+  });
+  if (totalLbl) totalLbl.textContent = total.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+}
+
+// ═══════════════════════════════════════════
 // ALMACÉN — stock de materiales
 // ═══════════════════════════════════════════
 function calcularAlmacen() {
@@ -2264,15 +2704,10 @@ function onPersonaSelect() {
   if (!p) return;
   document.getElementById('p_num').value    = p.num  || '';
   document.getElementById('p_nombre').value = p.nombre;
-  // Preseleccionar tipo
-  const tipoSel = document.getElementById('p_tipo');
-  for (let o of tipoSel.options) if (o.value === p.tipo) { o.selected = true; break; }
-  // Mostrar info de coste
+  // No se muestra información de coste (confidencial): solo la categoría
   const info = document.getElementById('p_coste_info');
   info.style.display = 'block';
-  info.textContent = `${p.cat} · Coste: ${p.ch}€/h · Dieta completa: ${p.dc}€ · Media dieta: ${p.md}€ · Km: ${p.km}€/km`;
-  // Precargar km y dieta del maestro como referencia visual
-  document.getElementById('p_km').placeholder = `Ej: ${Math.round(p.km * 100)}`;
+  info.textContent = p.cat;
 }
 
 // ── Al seleccionar maquinaria del desplegable maestro ──────────
@@ -2629,35 +3064,73 @@ function calcularCostePreview() {
 // ═══════════════════════════════════════════
 // PERSONAL
 // ═══════════════════════════════════════════
+// ── DIETAS (carácter indemnizatorio, no salarial) ──
+// No pernocta (duerme en casa): media dieta 15 €/día
+// Pernocta: dieta completa según km → <350: 45 € · 350-499: 58 € · ≥500: 68 €
+function calcularDieta(pernocta, km) {
+  if (pernocta === 'sin') return { tipo: 'sin_dieta', importe: 0 };
+  if (pernocta === 'no')  return { tipo: 'media_dieta', importe: 15 };
+  // Pernocta: por tramos de km
+  if (km >= 500) return { tipo: 'dieta_completa', importe: 68 };
+  if (km >= 350) return { tipo: 'dieta_completa', importe: 58 };
+  return { tipo: 'dieta_completa', importe: 45 };
+}
+
+function onPernoctaChange() {
+  const v = document.getElementById('p_pernocta').value;
+  document.getElementById('p_km_wrap').style.display = (v === 'si') ? 'flex' : 'none';
+  calcDietaPersona();
+}
+
+function calcDietaPersona() {
+  const v = document.getElementById('p_pernocta').value;
+  const km = parseFloat(document.getElementById('p_km').value) || 0;
+  const d = calcularDieta(v, km);
+  const info = document.getElementById('p_dieta_info');
+  if (d.importe > 0) {
+    info.style.display = 'block';
+    info.textContent = v === 'si'
+      ? `Dieta completa (pernocta, ${km} km): ${d.importe} €/día`
+      : `Media dieta (duerme en casa): ${d.importe} €/día`;
+  } else {
+    info.style.display = v === 'sin' ? 'block' : 'none';
+    info.textContent = 'Sin dieta';
+  }
+}
+
 function addPersonal() {
   const num = document.getElementById('p_num').value.trim();
   const nombre = document.getElementById('p_nombre').value.trim();
   const horas = parseFloat(document.getElementById('p_horas').value) || 0;
-  const dieta = document.getElementById('p_dieta').value;
-  const km = parseFloat(document.getElementById('p_km').value) || 0;
-  const tipo = document.getElementById('p_tipo').value;
+  const pernocta = document.getElementById('p_pernocta').value;
+  const km = pernocta === 'si' ? (parseFloat(document.getElementById('p_km').value) || 0) : 0;
   const incidencia = document.getElementById('p_incidencia').value.trim();
 
   if (!nombre) { showToast('Introduce el nombre', 'error'); return; }
   if (!horas) { showToast('Introduce las horas', 'error'); return; }
+  if (pernocta === 'si' && km <= 0) { showToast('Introduce los km para calcular la dieta completa', 'error'); return; }
 
-  // Buscar coste/h del maestro si viene del desplegable
+  // Coste/h del maestro (interno, no visible) y tipo del maestro
   const pSelIdx = document.getElementById('p_select').value;
   const pMaestro = pSelIdx !== '' ? PERSONAL_MAESTRO[parseInt(pSelIdx)] : null;
   const costeh = pMaestro ? pMaestro.ch : null;
-  const dieta_dc = pMaestro ? pMaestro.dc : 45;
-  const dieta_md = pMaestro ? pMaestro.md : 22.5;
-  const km_rate  = pMaestro ? pMaestro.km : 0.26;
-  // Calcular coste real de la jornada
-  const coste_dieta = dieta === 'dieta_completa' ? dieta_dc : dieta === 'media_dieta' ? dieta_md : 0;
-  const coste_km    = km * km_rate;
-  const coste_mod   = costeh ? (horas * costeh) + coste_dieta + coste_km : null;
-  state.personal.push({ num, nombre, horas, dieta, km, tipo, incidencia, costeh, coste_mod });
+  const tipo = pMaestro ? pMaestro.tipo : 'MOD';
+
+  // Dieta según pernocta y km (tabla indemnizatoria)
+  const d = calcularDieta(pernocta, km);
+  const coste_mod = costeh != null ? (horas * costeh) + d.importe : null;
+
+  state.personal.push({ num, nombre, horas,
+    dieta: d.tipo, coste_dieta: d.importe, pernocta: pernocta === 'si', km,
+    tipo, incidencia, costeh, coste_mod });
   renderPersonal();
   actualizarBadges();
   toggleForm('formPersonal');
   limpiarForm(['p_num','p_nombre','p_horas','p_km','p_incidencia']);
   document.getElementById('p_select').value = '';
+  document.getElementById('p_pernocta').value = 'no';
+  document.getElementById('p_km_wrap').style.display = 'none';
+  document.getElementById('p_dieta_info').style.display = 'none';
   document.getElementById('p_coste_info').style.display = 'none';
   showToast('Persona añadida ✓', 'success');
 }
@@ -2668,7 +3141,10 @@ function renderPersonal() {
   lista.innerHTML = '';
   let total = 0;
   state.personal.forEach((p, i) => {
+    if (p._externo) return; // los externos se muestran en su pestaña
     total += p.horas;
+    const dietaLbl = p.dieta === 'dieta_completa' ? `Dieta completa (${p.coste_dieta||45} €)` :
+                     p.dieta === 'media_dieta' ? 'Media dieta (15 €)' : 'Sin dieta';
     const div = document.createElement('div');
     div.className = 'data-row';
     div.style.gridTemplateColumns = '1fr';
@@ -2681,9 +3157,9 @@ function renderPersonal() {
           <span style="font-family:var(--mono);font-size:11px;color:var(--accent);">${p.horas}h</span>
         </div>
         <div class="row-meta">
-          <span class="meta-item">Dieta: <span>${p.dieta.replace('_',' ')}</span></span>
-          <span class="meta-item">Km: <span>${p.km}</span></span>
-          <span class="meta-item">Tipo: <span>${p.tipo}</span></span>
+          <span class="meta-item">${p.pernocta ? '🛏 Pernocta' : 'No pernocta'}</span>
+          <span class="meta-item">${dietaLbl}</span>
+          ${p.pernocta ? `<span class="meta-item">Km: <span>${p.km}</span></span>` : ''}
           ${p.incidencia ? `<span class="meta-item">⚠ <span>${p.incidencia}</span></span>` : ''}
         </div>
       </div>`;
@@ -3125,8 +3601,9 @@ function delItem(lista, idx) {
     }
   }
   state[lista].splice(idx, 1);
-  if (lista === 'personal') renderPersonal();
-  if (lista === 'maquinaria') renderMaquinaria();
+  if (lista === 'personal') { renderPersonal(); renderMOExterna(); }
+  if (lista === 'maquinaria') { renderMaquinaria(); renderAlquileres(); }
+  if (lista === 'indirectos') renderIndirectos();
   if (lista === 'materiales') renderMateriales();
   if (lista === 'subcontratas') renderSubcontratas();
   if (lista === 'otros') renderOtros();
@@ -3140,13 +3617,20 @@ function limpiarForm(ids) {
 }
 
 function actualizarBadges() {
-  document.getElementById('badgePersonal').textContent = state.personal.length;
-  document.getElementById('badgeMaq').textContent = state.maquinaria.length;
+  const propios = state.personal.filter(p => !p._externo).length;
+  const externos = state.personal.filter(p => p._externo).length;
+  const maqPropia = state.maquinaria.filter(m => !m._alquiler).length;
+  const alquileres = state.maquinaria.filter(m => m._alquiler).length;
+  document.getElementById('badgePersonal').textContent = propios;
+  document.getElementById('badgeMaq').textContent = maqPropia;
+  const ba = document.getElementById('badgeAlq'); if (ba) ba.textContent = alquileres;
+  const bm = document.getElementById('badgeMOE'); if (bm) bm.textContent = externos;
   document.getElementById('badgeMat').textContent  = state.materiales.length;
   document.getElementById('badgeSub').textContent  = state.subcontratas.length;
   const bo = document.getElementById('badgeOtros'); if (bo) bo.textContent = state.otros.length;
   document.getElementById('badgeProd').textContent = state.produccion.length;
   document.getElementById('badgeCostes').textContent = state.costes.length;
+  const bi = document.getElementById('badgeInd'); if (bi) bi.textContent = (state.indirectos||[]).length;
 }
 
 // ═══════════════════════════════════════════
@@ -3247,14 +3731,17 @@ function cambiarRol(r) {
   rol = r;
   localStorage.setItem('telice_rol', r);
   aplicarRol();
-  showToast(r === 'jefe' ? 'Modo Jefe de obra' : 'Modo Encargado', 'success');
+  showToast(r === 'jefe' ? 'Modo Jefe de obra' : 'Modo Jefe de equipo', 'success');
 }
 
 function aplicarRol() {
   const sel = document.getElementById('rolSelector');
   if (sel) sel.value = rol;
-  // La pestaña Costes es visible para ambos roles: el encargado puede rellenarla
-  // (y ahorrar trabajo al jefe) o dejarla para que la complete el jefe de obra.
+  // La pestaña Costes es visible para ambos roles: el jefe de equipo puede rellenarla
+  // (y ahorrar trabajo al jefe de obra) o dejarla para que la complete él.
+  // C. Indirectos: SOLO el jefe de obra
+  const navInd = document.getElementById('navIndirectos');
+  if (navInd) navInd.style.display = (rol === 'jefe') ? '' : 'none';
   // Botón principal del footer
   const btnSend = document.getElementById('btnPrincipal');
   if (btnSend) {
@@ -3335,7 +3822,7 @@ function validarParteJefe() {
 
 // ── JEFE: devolver parte al encargado ─────────────────────────
 function devolverParte(id) {
-  const comentario = prompt('Motivo de la devolución (lo verá el encargado):');
+  const comentario = prompt('Motivo de la devolución (lo verá el jefe de equipo):');
   if (comentario === null) return;
   const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   const i = hist.findIndex(p => p._id === id);
@@ -3346,7 +3833,7 @@ function devolverParte(id) {
   localStorage.setItem('telice_historial', JSON.stringify(hist));
   exportarParteArchivo(hist[i]);
   actualizarHistorial();
-  showToast('Parte devuelto al encargado', 'success');
+  showToast('Parte devuelto al jefe de equipo', 'success');
 }
 
 // ── Construir objeto parte desde el estado actual ─────────────
@@ -3360,6 +3847,7 @@ function construirParte(c, estado) {
     otros: state.otros,
     produccion: state.produccion,
     costes: state.costes,
+    indirectos: state.indirectos || [],
     _estado: estado,
     _guardado: new Date().toISOString(),
     _id: (_parteEnEdicion && _parteEnEdicion._id) || Date.now(),
@@ -3367,8 +3855,8 @@ function construirParte(c, estado) {
 }
 
 function resetEstado() {
-  state = { personal: [], maquinaria: [], materiales: [], subcontratas: [], otros: [], produccion: [], costes: [] };
-  renderPersonal(); renderMaquinaria(); renderMateriales(); renderSubcontratas(); renderOtros(); renderProduccion(); renderCostes();
+  state = { personal: [], maquinaria: [], materiales: [], subcontratas: [], otros: [], produccion: [], costes: [], indirectos: [] };
+  renderPersonal(); renderMaquinaria(); renderAlquileres(); renderMOExterna(); renderMateriales(); renderSubcontratas(); renderOtros(); renderProduccion(); renderCostes(); renderIndirectos();
   renderAlmacen();
   _parteEnEdicion = null;
 }
@@ -3397,8 +3885,9 @@ function editarParte(id) {
   state.otros        = parte.otros        || [];
   state.produccion   = parte.produccion   || [];
   state.costes       = parte.costes       || [];
-  renderPersonal(); renderMaquinaria(); renderMateriales(); renderSubcontratas();
-  renderOtros(); renderProduccion(); renderCostes(); renderAlmacen(); actualizarBadges();
+  state.indirectos   = parte.indirectos   || [];
+  renderPersonal(); renderMaquinaria(); renderAlquileres(); renderMOExterna(); renderMateriales(); renderSubcontratas();
+  renderOtros(); renderProduccion(); renderCostes(); renderIndirectos(); renderAlmacen(); actualizarBadges();
   showTab('cabecera');
   showToast('Parte recuperado — edítalo y vuelve a enviarlo', 'success');
 }
@@ -3457,8 +3946,9 @@ function completarCostes(id) {
   state.otros        = parte.otros        || [];
   state.produccion   = parte.produccion   || [];
   state.costes       = parte.costes       || [];
-  renderPersonal(); renderMaquinaria(); renderMateriales(); renderSubcontratas();
-  renderOtros(); renderProduccion(); renderCostes(); actualizarBadges();
+  state.indirectos   = parte.indirectos   || [];
+  renderPersonal(); renderMaquinaria(); renderAlquileres(); renderMOExterna(); renderMateriales(); renderSubcontratas();
+  renderOtros(); renderProduccion(); renderCostes(); renderIndirectos(); actualizarBadges();
   showTab('costes');
   showToast('Completa los costes y valida el parte', 'success');
 }
@@ -3499,7 +3989,7 @@ function enviarParte() {
   }
 
   // Resetear estado
-  state = { personal: [], maquinaria: [], materiales: [], subcontratas: [], otros: [], produccion: [], costes: [] };
+  state = { personal: [], maquinaria: [], materiales: [], subcontratas: [], otros: [], produccion: [], costes: [], indirectos: [] };
   renderAlmacen();
   renderPersonal(); renderMaquinaria(); renderMateriales(); renderSubcontratas(); renderOtros(); renderProduccion(); renderCostes();
   actualizarBadges();
@@ -3785,6 +4275,8 @@ function verDetalleParte(idx) {
       <span class="val" style="color:var(--red);">${fmtE(totalCosteSUB)}</span></div>
     <div class="modal-row"><span class="lbl">Otros conceptos</span>
       <span class="val" style="color:var(--red);">${fmtE(totalCosteOtros)}</span></div>
+    ${(p.indirectos && p.indirectos.length) ? `<div class="modal-row"><span class="lbl">Costes indirectos (${p.indirectos.length})</span>
+      <span class="val" style="color:var(--red);">${fmtE(p.indirectos.reduce((s,c)=>s+(c.importe||0),0))}</span></div>` : ''}
     <div class="modal-row" style="border-top:2px solid var(--border2);margin-top:4px;padding-top:6px;">
       <span class="lbl" style="font-weight:600;">Margen bruto del parte</span>
       <span class="val" style="font-size:15px;font-weight:700;color:${margen>=0?'var(--green)':'var(--red)'};">${fmtE(margen)}${totalVenta>0?` · ${Math.round(margen/totalVenta*100)}%`:''}</span>
