@@ -1589,91 +1589,6 @@
 
 <script>
 // ═══════════════════════════════════════════
-// ALMACENAMIENTO — IndexedDB con caché en memoria
-// Sustituye a localStorage (cuota ~5MB) por IndexedDB (cientos de MB).
-// Migración automática de datos existentes en el primer arranque.
-// ═══════════════════════════════════════════
-const MAX_PARTES = 500; // tope de partes en historial (antes 50 por cuota de localStorage)
-
-const LS = {
-  _m: {},          // caché síncrona en memoria
-  _db: null,
-  _fallback: false, // si IndexedDB no está disponible, usa localStorage
-  ready: null,
-  getItem(k) { return Object.prototype.hasOwnProperty.call(this._m, k) ? this._m[k] : null; },
-  setItem(k, v) {
-    v = String(v);
-    this._m[k] = v;
-    if (k === 'telice_rol') { try { localStorage.setItem(k, v); } catch(e){} } // espejo para lectura previa a hidratación
-    this._persist(k, v);
-  },
-  removeItem(k) {
-    delete this._m[k];
-    this._persist(k, null);
-  },
-  _persist(k, v) {
-    if (this._fallback) {
-      try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); }
-      catch(e) { if (typeof showToast === 'function') showToast('⚠ Sin espacio de almacenamiento', 'error'); }
-      return;
-    }
-    if (!this._db) { this._queue = this._queue || []; this._queue.push([k, v]); return; }
-    try {
-      const tx = this._db.transaction('kv', 'readwrite');
-      const st = tx.objectStore('kv');
-      v === null ? st.delete(k) : st.put(v, k);
-      tx.onerror = () => { if (typeof showToast === 'function') showToast('⚠ Error guardando datos en el dispositivo', 'error'); };
-    } catch(e) {
-      if (typeof showToast === 'function') showToast('⚠ Error de almacenamiento: ' + e.message, 'error');
-    }
-  }
-};
-
-// Siembra síncrona desde localStorage (para lecturas en tiempo de carga, p.ej. telice_rol)
-try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('telice_')) LS._m[k] = localStorage.getItem(k); } } catch(e) {}
-
-LS.ready = new Promise((resolve) => {
-  let req;
-  try { req = indexedDB.open('telice_app', 1); }
-  catch(e) { LS._fallback = true; resolve(); return; }
-  req.onupgradeneeded = (ev) => { ev.target.result.createObjectStore('kv'); };
-  req.onerror = () => { LS._fallback = true; resolve(); };
-  req.onsuccess = (ev) => {
-    LS._db = ev.target.result;
-    LS._db.onversionchange = () => LS._db.close();
-    const tx = LS._db.transaction('kv', 'readonly');
-    const st = tx.objectStore('kv');
-    const keysReq = st.getAllKeys();
-    const valsReq = st.getAll();
-    tx.oncomplete = () => {
-      const keys = keysReq.result || [], vals = valsReq.result || [];
-      if (keys.length > 0) {
-        // IndexedDB es la fuente autoritativa
-        keys.forEach((k, i) => { LS._m[k] = vals[i]; });
-      } else {
-        // Primer arranque: migrar datos existentes de localStorage a IndexedDB
-        const migrar = Object.keys(LS._m);
-        if (migrar.length > 0) {
-          const txw = LS._db.transaction('kv', 'readwrite');
-          const stw = txw.objectStore('kv');
-          migrar.forEach(k => stw.put(LS._m[k], k));
-          txw.oncomplete = () => {
-            // Liberar la cuota de localStorage (se conserva telice_rol como espejo)
-            try { localStorage.removeItem('telice_historial'); localStorage.removeItem('telice_borrador'); } catch(e) {}
-            console.log('✓ Migración a IndexedDB completada:', migrar.length, 'claves');
-          };
-        }
-      }
-      // Vaciar cola de escrituras previas a la apertura
-      (LS._queue || []).forEach(([k, v]) => LS._persist(k, v));
-      LS._queue = null;
-      resolve();
-    };
-    tx.onerror = () => { LS._fallback = true; resolve(); };
-  };
-});
-
-// ═══════════════════════════════════════════
 // DATOS MAESTROS — Proyecto 23-039 Renovación Norte
 // ═══════════════════════════════════════════
 const TASKS = [{"cod": "1.01", "desc": "ENCARGADOS DE TRABAJOS (TELECOMUNICACIONES)"}, {"cod": "1.02", "desc": "JORNADA DE ALQUILER DE VAGONETA"}, {"cod": "1.03", "desc": "ENCARGADOS DE TRABAJOS (IISS)"}, {"cod": "1.04", "desc": "ENCARGADOS DE TRABAJOS (SSEE)"}, {"cod": "1.05", "desc": "ENCARGADOS DE TRABAJOS (CATENARIA)"}, {"cod": "2.01", "desc": "SUMINISTROS CANALETAS"}, {"cod": "2.02", "desc": "SUMINISTROS ARQUETAS LADRILLO"}, {"cod": "2.03", "desc": "SUMINISTROS ARQUETAS PREFABRICADAS"}, {"cod": "2.04", "desc": "SUMINISTROS TUBERÍA PVC DRENAJE"}, {"cod": "2.06", "desc": "SUMINISTRO TUBERÍA POLIETILENO CANALIZACIÓN"}, {"cod": "2.08", "desc": "SUMINISTRO TUBO ACERO Y PERCHAS"}, {"cod": "2.10", "desc": "SUMINISTRO HITO PREFABRICADO"}, {"cod": "2.11", "desc": "SUMINISTRO TUBO ACERO 3\""}, {"cod": "2.12", "desc": "SUMINISTRO MATERIAL PROTECCIÓN CABLES"}, {"cod": "2.13", "desc": "SUMINISTRO TALADRO, PELDAÑOS Y PASAMUROS"}, {"cod": "2.15", "desc": "SUMINISTRO REJILLA FALSO TECHO"}, {"cod": "2.16", "desc": "SUMINISTRO CANALETA PVC"}, {"cod": "2.17", "desc": "SUMINISTROS EDIFICIOS TÉCNICOS"}, {"cod": "2.18", "desc": "SUMINISTRO FIBRA ÓPTICA"}, {"cod": "2.19", "desc": "SUMINISTRO TUBO POLIETILENO FIBRA ÓPTICA"}, {"cod": "2.21", "desc": "SUMINISTRO HERRAJES RETENCIÓN Y SUSPENSIÓN"}, {"cod": "2.22", "desc": "SUMINISTRO EMPALMES Y CAJAS"}, {"cod": "2.23", "desc": "SUMINISTRO SWITCH"}, {"cod": "2.29", "desc": "SUMINISTRO SAI"}, {"cod": "2.30", "desc": "SUMINISTRO ARMARIO REPARTIDOR"}, {"cod": "3.01", "desc": "EJECUCION MANO DE OBRA PROPIA DE CANALETAS"}, {"cod": "3.02", "desc": "EJECUCION DE ARQUETAS DE LADRILLO"}, {"cod": "3.03", "desc": "EJECUCION DE ARQUETAS PREFABRICADAS"}, {"cod": "3.04", "desc": "EJECUCION DE TUBERIA PVC PARA DRENAJE"}, {"cod": "3.05", "desc": "EJECUCION DE ZANJA A MANO PARA TENDIDO DE CABLE"}, {"cod": "3.06", "desc": "EJECUCION DE CANALIZACION HORMIGONADA"}, {"cod": "3.07", "desc": "EJECUCION DE TOPO GSM-R"}, {"cod": "3.08", "desc": "EJECUCION DE TUBO DE ACERO Y PERCHAS PARA CABLES"}, {"cod": "3.09", "desc": "ENTRADA DE CABLE A CASETA EXISTENTE"}, {"cod": "3.10", "desc": "EJECUCION HITO PREFABRICADO"}, {"cod": "3.11", "desc": "EJECUCION CANALIZACIÓN Y RECRECIDO ARQUETAS EN PLACA"}, {"cod": "3.12", "desc": "EJECUCION REPARACIÓN Y PROTECCIÓN CABLES"}, {"cod": "3.13", "desc": "EJECUCION TALADROS, PELDAÑOS Y PASAMUROS"}, {"cod": "3.14", "desc": "EJECUCION CUNETA, ROTURA Y REPOSICIÓN"}, {"cod": "3.15", "desc": "EJECUCION REJILLA FALSO TECHO"}, {"cod": "3.16", "desc": "EJECUCION CANALETA PVC"}, {"cod": "3.17", "desc": "EJECUCION EDIFICIOS TÉCNICOS"}, {"cod": "3.18", "desc": "EJECUCION TENDIDO FIBRA ÓPTICA"}, {"cod": "3.19", "desc": "EJECUCION TENDIDO TUBERÍA POLIETILENO FIBRA"}, {"cod": "3.20", "desc": "RETIRADA DE FIBRA ÓPTICA"}, {"cod": "3.21", "desc": "EJECUCION HERRAJES RETENCIÓN Y SUSPENSIÓN"}, {"cod": "3.22", "desc": "EJECUCION EMPALMES, ALMACENAMIENTO Y CAJAS"}, {"cod": "3.23", "desc": "EJECUCION DE SWITCH"}, {"cod": "3.25", "desc": "EJECUCION SISTEMAS SUPERVISIÓN FIBRA ÓPTICA"}, {"cod": "3.29", "desc": "EJECUCION SAI"}, {"cod": "3.30", "desc": "EJECUCION REPARTIDORES Y ARMARIOS"}, {"cod": "4.01", "desc": "DOCUMENTACIÓN ISA, INTEROPERABILIDAD Y AS BUILT"}, {"cod": "5.01", "desc": "SEGURIDAD Y SALUD"}, {"cod": "6.01", "desc": "GESTIÓN DE RESIDUOS"}, {"cod": "7.01", "desc": "INTEGRACIÓN AMBIENTAL"}];
@@ -1715,10 +1630,7 @@ let state = {
 // ═══════════════════════════════════════════
 // INICIALIZACIÓN
 // ═══════════════════════════════════════════
-document.addEventListener('DOMContentLoaded', async () => {
-  await LS.ready;
-  // Solicitar almacenamiento persistente (evita que el navegador purgue IndexedDB)
-  if (navigator.storage && navigator.storage.persist) { try { navigator.storage.persist(); } catch(e) {} }
+document.addEventListener('DOMContentLoaded', () => {
   // Fecha de hoy
   const hoy = new Date();
   document.getElementById('fecha').value = hoy.toISOString().split('T')[0];
@@ -1743,6 +1655,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   actualizarBadges();
   checkOnline();
   aplicarRol();
+  if (window.activarBuscadores) activarBuscadores();
 
   // Inicializar fecha de referencia del informe
   document.getElementById('fechaRef').value = hoy.toISOString().split('T')[0];
@@ -1803,6 +1716,8 @@ function poblarSelectTasks() {
     opt.textContent = `${t.cod} · ${t.desc.substring(0,60)}`;
     sel.appendChild(opt);
   });
+
+  if(window.activarBuscadores) activarBuscadores();
 }
 
 function poblarSelectPartidas() {
@@ -1829,6 +1744,8 @@ function poblarSelectPartidas() {
     });
     sel.appendChild(optGrp);
   });
+
+  if(window.activarBuscadores) activarBuscadores();
 }
 
 // ═══════════════════════════════════════════
@@ -1879,6 +1796,8 @@ function poblarSelectPersonal() {
     sel.appendChild(grp);
   });
 
+
+  if(window.activarBuscadores) activarBuscadores();
 }
 
 function poblarSelectMaquinaria() {
@@ -1906,6 +1825,8 @@ function poblarSelectMaquinaria() {
     sel.appendChild(grp);
   });
 
+
+  if(window.activarBuscadores) activarBuscadores();
 }
 
 // ── Al seleccionar persona del desplegable maestro ─────────────
@@ -1937,6 +1858,8 @@ function poblarSelectMateriales() {
     });
     sel.appendChild(grp);
   });
+
+  if(window.activarBuscadores) activarBuscadores();
 }
 
 function onMatSelect() {
@@ -2110,6 +2033,8 @@ function poblarSelectSubcontratas() {
       `${emp.nombre}${emp.conTarifa ? ' ✓' : ' (sin tarifa)'}`;
     selEmp.appendChild(opt);
   });
+
+  if(window.activarBuscadores) activarBuscadores();
 }
 
 function onSubEmpresaChange() {
@@ -2315,6 +2240,8 @@ function poblarSelectOtros() {
     });
     sel.appendChild(grp);
   });
+
+  if(window.activarBuscadores) activarBuscadores();
 }
 
 function onOtrosSelect() {
@@ -2446,6 +2373,8 @@ function poblarSelectAlquileres() {
     opt.textContent = `${m.cod} · ${m.desc}${m.prov ? ' ('+m.prov+')' : ''}${m.cd ? ' — '+m.cd+'€/día' : m.ch ? ' — '+m.ch+'€/h' : ''}`;
     sel.appendChild(opt);
   });
+
+  if(window.activarBuscadores) activarBuscadores();
 }
 
 function onAlqSelect() {
@@ -2637,6 +2566,8 @@ function poblarSelectIndirectos() {
     });
     sel.appendChild(grp);
   });
+
+  if(window.activarBuscadores) activarBuscadores();
 }
 
 function onIndSelect() {
@@ -2705,7 +2636,7 @@ function renderIndirectos() {
 // ═══════════════════════════════════════════
 function calcularAlmacen() {
   // Stock = recibido (Materiales) - consumido (Costes tipo MAT) en todos los partes enviados
-  const hist = JSON.parse(LS.getItem('telice_historial') || '[]');
+  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   const alm = {};
   hist.forEach(p => {
     (p.materiales || []).forEach(m => {
@@ -3769,12 +3700,12 @@ function setCabecera(c) {
 
 function guardarBorrador() {
   const parte = { cabecera: getCabecera(), ...state, _guardado: new Date().toISOString(), _enviado: false };
-  LS.setItem('telice_borrador', JSON.stringify(parte));
+  localStorage.setItem('telice_borrador', JSON.stringify(parte));
   showToast('Borrador guardado ✓', 'success');
 }
 
 function cargarBorrador() {
-  const raw = LS.getItem('telice_borrador');
+  const raw = localStorage.getItem('telice_borrador');
   if (!raw) return;
   try {
     const parte = JSON.parse(raw);
@@ -3813,11 +3744,11 @@ const ESTADOS = {
   devuelto:         { label: 'Devuelto',            color: 'var(--red)',   bg: '#FDECEA' },
 };
 
-let rol = LS.getItem('telice_rol') || 'encargado';
+let rol = localStorage.getItem('telice_rol') || 'encargado';
 
 function cambiarRol(r) {
   rol = r;
-  LS.setItem('telice_rol', r);
+  localStorage.setItem('telice_rol', r);
   aplicarRol();
   showToast(r === 'jefe' ? 'Modo Jefe de obra' : 'Modo Jefe de equipo', 'success');
 }
@@ -3864,11 +3795,11 @@ function enviarAJefe() {
   parte._rol_origen = 'encargado';
 
   // Guardar en historial local: actualizar si ya existe (parte recuperado), si no añadir
-  const hist = JSON.parse(LS.getItem('telice_historial') || '[]');
+  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   const i = hist.findIndex(p => p._id === parte._id);
   if (i >= 0) hist[i] = parte; else hist.unshift(parte);
-  LS.setItem('telice_historial', JSON.stringify(hist.slice(0, MAX_PARTES)));
-  LS.removeItem('telice_borrador');
+  localStorage.setItem('telice_historial', JSON.stringify(hist.slice(0, 50)));
+  localStorage.removeItem('telice_borrador');
 
   // Descargar archivo para enviar al jefe
   exportarParteArchivo(parte);
@@ -3895,10 +3826,10 @@ function validarParteJefe() {
   parte._validado_fecha = new Date().toISOString();
 
   // Actualizar en historial
-  const hist = JSON.parse(LS.getItem('telice_historial') || '[]');
+  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   const i = hist.findIndex(p => p._id === parte._id);
   if (i >= 0) hist[i] = parte; else hist.unshift(parte);
-  LS.setItem('telice_historial', JSON.stringify(hist.slice(0, MAX_PARTES)));
+  localStorage.setItem('telice_historial', JSON.stringify(hist.slice(0, 50)));
 
   exportarParteArchivo(parte); // para devolver el estado al encargado / archivo central
 
@@ -3912,13 +3843,13 @@ function validarParteJefe() {
 function devolverParte(id) {
   const comentario = prompt('Motivo de la devolución (lo verá el jefe de equipo):');
   if (comentario === null) return;
-  const hist = JSON.parse(LS.getItem('telice_historial') || '[]');
+  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   const i = hist.findIndex(p => p._id === id);
   if (i < 0) return;
   hist[i]._estado = 'devuelto';
   hist[i]._comentario_jefe = comentario.trim();
   hist[i]._devuelto_fecha = new Date().toISOString();
-  LS.setItem('telice_historial', JSON.stringify(hist));
+  localStorage.setItem('telice_historial', JSON.stringify(hist));
   exportarParteArchivo(hist[i]);
   actualizarHistorial();
   showToast('Parte devuelto al jefe de equipo', 'success');
@@ -3952,14 +3883,14 @@ function resetEstado() {
 let _parteEnEdicion = null;
 
 function reexportarParte(id) {
-  const hist = JSON.parse(LS.getItem('telice_historial') || '[]');
+  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   const p = hist.find(x => x._id === id);
   if (p) exportarParteArchivo(p);
 }
 
 // Recuperar un parte (enviado sin terminar o borrador) para seguir editándolo
 function editarParte(id) {
-  const hist = JSON.parse(LS.getItem('telice_historial') || '[]');
+  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   const parte = hist.find(p => p._id === id);
   if (!parte) { showToast('No se encontró el parte', 'error'); return; }
   if (!confirm('Se recuperará este parte en el formulario para editarlo. Al volver a enviarlo se actualizará (no se duplica). ¿Continuar?')) return;
@@ -4004,10 +3935,10 @@ function importarParteArchivo(inputEl) {
     try {
       const parte = JSON.parse(e.target.result);
       if (!parte.cabecera || !parte._estado) { showToast('Archivo de parte no válido', 'error'); return; }
-      const hist = JSON.parse(LS.getItem('telice_historial') || '[]');
+      const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
       const i = hist.findIndex(p => p._id === parte._id);
       if (i >= 0) hist[i] = parte; else hist.unshift(parte);
-      LS.setItem('telice_historial', JSON.stringify(hist.slice(0, MAX_PARTES)));
+      localStorage.setItem('telice_historial', JSON.stringify(hist.slice(0, 50)));
       actualizarHistorial();
       showTab('historial');
       showToast('Parte importado ✓', 'success');
@@ -4021,7 +3952,7 @@ function importarParteArchivo(inputEl) {
 
 // ── JEFE: abrir parte pendiente para completar costes ─────────
 function completarCostes(id) {
-  const hist = JSON.parse(LS.getItem('telice_historial') || '[]');
+  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   const parte = hist.find(p => p._id === id);
   if (!parte) return;
   _parteEnEdicion = parte;
@@ -4060,17 +3991,17 @@ function enviarParte() {
   };
 
   // Guardar en historial local
-  const hist = JSON.parse(LS.getItem('telice_historial') || '[]');
+  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   parte._id = Date.now();
   hist.unshift(parte);
-  LS.setItem('telice_historial', JSON.stringify(hist.slice(0, MAX_PARTES)));
-  LS.removeItem('telice_borrador');
+  localStorage.setItem('telice_historial', JSON.stringify(hist.slice(0, 50)));
+  localStorage.removeItem('telice_borrador');
 
   // Intentar sincronizar si hay red
   if (navigator.onLine) {
     parte._enviado = true;
     hist[0]._enviado = true;
-    LS.setItem('telice_historial', JSON.stringify(hist));
+    localStorage.setItem('telice_historial', JSON.stringify(hist));
     showToast('Parte enviado y sincronizado ✓', 'success');
   } else {
     showToast('Guardado. Se sincronizará cuando haya red.', 'success');
@@ -4087,16 +4018,16 @@ function enviarParte() {
 
 function syncPartes() {
   if (!navigator.onLine) { showToast('Sin conexión. Conecta a internet.', 'error'); return; }
-  const hist = JSON.parse(LS.getItem('telice_historial') || '[]');
+  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   let count = 0;
   hist.forEach(p => { if (!p._enviado) { p._enviado = true; count++; } });
-  LS.setItem('telice_historial', JSON.stringify(hist));
+  localStorage.setItem('telice_historial', JSON.stringify(hist));
   actualizarHistorial();
   showToast(count > 0 ? `${count} parte(s) sincronizado(s) ✓` : 'Todo sincronizado ✓', 'success');
 }
 
 function actualizarHistorial() {
-  const hist = JSON.parse(LS.getItem('telice_historial') || '[]');
+  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   const lista = document.getElementById('listaHistorial');
   if (hist.length === 0) {
     lista.innerHTML = '<div class="empty-state">No hay partes guardados en este dispositivo.<br><br>Los partes enviados aparecerán aquí.</div>';
@@ -4172,7 +4103,7 @@ function actualizarHistorial() {
 }
 
 function verDetalleParte(idx) {
-  const hist = JSON.parse(LS.getItem('telice_historial') || '[]');
+  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   const p = hist[idx];
   if (!p) return;
   const c = p.cabecera || {};
@@ -4597,7 +4528,7 @@ function calcularCumplimiento(hist, periodo, fechaRef) {
 }
 
 function renderInforme() {
-  const hist = JSON.parse(LS.getItem('telice_historial') || '[]');
+  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   const fechaRef = document.getElementById('fechaRef').value || new Date().toISOString().split('T')[0];
   const partesFiltrados = filtrarPartes(hist, _periodo, fechaRef);
 
@@ -4807,7 +4738,7 @@ function fmtN(v) {
 // EXPORTAR EXCEL — 3 PERÍODOS EN 3 HOJAS + DETALLE
 // ═══════════════════════════════════════════
 function exportarExcel() {
-  const hist = JSON.parse(LS.getItem('telice_historial') || '[]');
+  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   if (!hist.length) { showToast('No hay partes guardados', 'error'); return; }
 
   const fechaRef = document.getElementById('fechaRef').value || new Date().toISOString().split('T')[0];
@@ -4894,7 +4825,7 @@ function exportarExcel() {
   XLSX.utils.book_append_sheet(wb, wsP, 'Detalle Partidas');
 
   // Hoja Cumplimiento de producción (Día / Semana / A origen)
-  const histC = JSON.parse(LS.getItem('telice_historial') || '[]');
+  const histC = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   const fRef = document.getElementById('fechaRef').value || new Date().toISOString().split('T')[0];
   const cumpRows = [['CUMPLIMIENTO DE PRODUCCIÓN'], ['Fecha referencia:', fRef], [''],
     ['Período', 'Valor planificado €', 'Valor producido €', '% Cumplimiento']];
@@ -4932,6 +4863,94 @@ function exportarExcel() {
   XLSX.writeFile(wb, `Produccion_23-039_${fecha}.xlsx`);
   showToast('Excel descargado ✓', 'success');
 }
+
+
+
+// ═══════════════════════════════════════════════════════════════
+// DESPLEGABLES CON BÚSQUEDA — filtro por texto en listas largas
+// Convierte <select> en buscables sin alterar su contenido ni su
+// onchange. 100% offline, sin librerías externas. Respeta optgroups.
+// ═══════════════════════════════════════════════════════════════
+(function(){
+  // Normaliza: minúsculas y sin acentos/diacríticos
+  function norm(s){
+    return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  }
+
+  // IDs de los desplegables largos a hacer buscables
+  const BUSCABLES = ['p_select','m_select','alq_select','mat_select',
+    'sub_select','sub_empresa_sel','otros_select','prod_partida',
+    'cost_task','cost_personal','cost_maquinaria','cost_subcontratas',
+    'cost_otros','ind_select','proyecto'];
+
+  function hacerBuscable(sel){
+    if(!sel || sel.dataset.searchable === '1') return;
+    sel.dataset.searchable = '1';
+
+    // Caja de texto de búsqueda, justo encima del select
+    const box = document.createElement('input');
+    box.type = 'text';
+    box.className = 'select-search-box';
+    box.placeholder = '🔍 Escribe para filtrar…';
+    box.autocomplete = 'off';
+    box.setAttribute('inputmode','search');
+    // Estilo inline (no depende de hoja externa)
+    box.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;margin-bottom:4px;'
+      + 'border:1px solid #ccc;border-radius:6px;font-size:15px;';
+
+    sel.parentNode.insertBefore(box, sel);
+
+    // Guardar el contenido original (para restaurar al limpiar)
+    function snapshotItems(){
+      // Lista de {opt, grupo, texto} de todas las options reales
+      const items = [];
+      sel.querySelectorAll('option').forEach(opt=>{
+        if(opt.value === '' ) return; // saltar placeholder
+        items.push({opt, txt: norm(opt.textContent), grupo: opt.parentNode.tagName==='OPTGROUP'?opt.parentNode:null});
+      });
+      return items;
+    }
+
+    function filtrar(){
+      const q = norm(box.value.trim());
+      const items = snapshotItems();
+      const tokens = q.split(/\s+/).filter(Boolean);
+      let visibles = 0;
+      // Mostrar/ocultar cada option
+      items.forEach(({opt,txt})=>{
+        const match = tokens.every(t=> txt.indexOf(t) !== -1);
+        opt.hidden = !match;
+        opt.style.display = match ? '' : 'none';
+        if(match) visibles++;
+      });
+      // Ocultar optgroups que se quedan sin hijos visibles
+      sel.querySelectorAll('optgroup').forEach(g=>{
+        const algun = Array.from(g.querySelectorAll('option')).some(o=>!o.hidden);
+        g.hidden = !algun;
+        g.style.display = algun ? '' : 'none';
+      });
+      // Si el seleccionado quedó oculto, no forzar cambio (se respeta)
+    }
+
+    box.addEventListener('input', filtrar);
+    // Al enfocar la caja, abrir el desplegable es cosa del usuario; aquí solo filtramos
+    // Limpiar con Escape
+    box.addEventListener('keydown', e=>{
+      if(e.key==='Escape'){ box.value=''; filtrar(); }
+    });
+    // Cuando se elige algo, reflejar el texto elegido en la caja para contexto
+    sel.addEventListener('change', ()=>{
+      const o = sel.options[sel.selectedIndex];
+      if(o && o.value!=='') box.value = '';  // limpiar para próxima búsqueda
+      filtrar();
+    });
+  }
+
+  // Exponer función para reactivar tras repoblar (por si se regeneran options)
+  window.activarBuscadores = function(){
+    BUSCABLES.forEach(id => hacerBuscable(document.getElementById(id)));
+  };
+})();
 
 </script>
 </body>
