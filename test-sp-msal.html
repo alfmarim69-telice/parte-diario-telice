@@ -209,32 +209,55 @@ async function getToken() {
 async function borrarListas() {
   if (!confirm('¿Seguro? Se borrarán las 16 listas y todos sus datos.')) return;
   document.getElementById('btnBorrar').disabled = true;
-  var digest = await getDigest();
-  var ya = await existing(_token_cache || await getTokenAndCache(), await getSiteId());
-  // versión simplificada: usar spPost con DELETE
-  var tok = await getToken();
+  status_('Borrando listas…', 'info');
   var deleted = 0, errors = 0;
-  for (var i = 0; i < ALL_LISTS.length; i++) {
-    var name = ALL_LISTS[i];
-    var lid = (await spGet('/lists/GetByTitle(\'' + name + '\')?$select=Id')).Id;
-    if (!lid) { log_('No existe: ' + name, 'warn'); continue; }
-    try {
-      var r = await fetch(_cfg.siteUrl.replace(/\/$/, '') + '/_api/web/lists(guid\'' + lid + '\')', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + await getToken(),
-          'X-RequestDigest': digest,
-          'X-HTTP-Method': 'DELETE',
-          'IF-MATCH': '*'
+  try {
+    var digest = await getDigest();
+    for (var i = 0; i < ALL_LISTS.length; i++) {
+      var name = ALL_LISTS[i];
+      log_('Borrando: ' + name, 'info');
+      try {
+        // Primero obtener el Id de la lista
+        var listData = await spGet('/lists/GetByTitle(\'' + name + '\')?$select=Id');
+        var lid = listData.Id;
+        if (!lid) { log_('No existe: ' + name, 'warn'); continue; }
+        // Borrar con X-HTTP-Method DELETE
+        var tok = await getToken();
+        var r = await fetch(_cfg.siteUrl.replace(/\/$/, '') + '/_api/web/lists(guid\'' + lid + '\')', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + tok,
+            'Accept': 'application/json;odata=nometadata',
+            'Content-Type': 'application/json;odata=nometadata',
+            'X-RequestDigest': digest,
+            'X-HTTP-Method': 'DELETE',
+            'IF-MATCH': '*'
+          }
+        });
+        if (r.ok || r.status === 204) {
+          log_('Borrada: ' + name, 'ok'); deleted++;
+        } else {
+          var errText = await r.text();
+          log_('Error ' + r.status + ' borrando ' + name + ': ' + errText.slice(0,100), 'err');
+          errors++;
         }
-      });
-      if (r.ok || r.status === 204) { log_('Borrada: ' + name, 'ok'); deleted++; }
-      else { log_('Error borrando ' + name + ': ' + r.status, 'err'); errors++; }
-    } catch(e) { log_('Error: ' + name + ' ' + e.message, 'err'); errors++; }
-    await new Promise(function(r){ setTimeout(r, 300); });
+      } catch(e) {
+        // Si no existe simplemente continuar
+        if (e.message && e.message.indexOf('404') >= 0) {
+          log_('No existe (omitida): ' + name, 'warn');
+        } else {
+          log_('Error: ' + name + ' — ' + e.message, 'err'); errors++;
+        }
+      }
+      await delay(400);
+    }
+    status_(deleted + ' listas borradas' + (errors > 0 ? ', ' + errors + ' errores' : ''), errors > 0 ? 'err' : 'ok');
+  } catch(e) {
+    status_('Error general: ' + e.message, 'err');
+    log_(e.message, 'err');
+  } finally {
+    document.getElementById('btnBorrar').disabled = false;
   }
-  status_(deleted + ' listas borradas' + (errors > 0 ? ', ' + errors + ' errores' : ''), errors > 0 ? 'err' : 'ok');
-  document.getElementById('btnBorrar').disabled = false;
 }
 
 function habilitarBotones(on) {
