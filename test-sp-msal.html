@@ -463,6 +463,29 @@ function onFileSelected(input) {
   reader.readAsText(file, 'utf-8');
 }
 
+// Lee los campos de una lista y devuelve mapa displayName->staticName
+async function getFieldMap(listName) {
+  var data = await spGet('/lists/GetByTitle(\'' + listName + '\')/fields?$select=Title,StaticName,Hidden,ReadOnlyField&$top=200');
+  var map = {};
+  (data.value||[]).forEach(function(f){
+    if (!f.Hidden && !f.ReadOnlyField) map[f.Title] = f.StaticName;
+  });
+  // siempre incluir Title aunque sea readonly (lo necesitamos para claves)
+  (data.value||[]).forEach(function(f){ if (f.Title==='Title') map['Title']=f.StaticName; });
+  return map;
+}
+
+// Traduce un objeto de datos usando el mapa displayName->staticName
+function translateFields(row, fieldMap) {
+  var out = {};
+  Object.keys(row).forEach(function(k) {
+    if (row[k] === null || row[k] === undefined) return;
+    var staticName = fieldMap[k] || k; // si no está en el mapa, intentar tal cual
+    out[staticName] = row[k];
+  });
+  return out;
+}
+
 async function poblarMaestros() {
   if (!_jsonData) { status_('Selecciona un JSON primero', 'err'); return; }
   document.getElementById('btnPoblar').disabled = true;
@@ -475,7 +498,7 @@ async function poblarMaestros() {
 
   try {
     var digest = await getDigest();
-    var total = 0, totalRegistros = 0;
+    var totalRegistros = 0;
 
     for (var li = 0; li < lists.length; li++) {
       var name = lists[li];
@@ -483,20 +506,27 @@ async function poblarMaestros() {
       var key  = LIST_KEY[name];
       bar.style.width = Math.round((li / lists.length) * 100) + '%';
 
-      // fila en grid
       var row = document.createElement('div');
       row.className = 'list-row active';
       row.id = 'pr-' + name;
       row.innerHTML = '<span class="dot"></span><span class="list-name">📋 ' + name + '</span>'
-        + '<span class="list-status">obteniendo existentes…</span>';
+        + '<span class="list-status">leyendo schema…</span>';
       grid.appendChild(row);
 
       try {
-        // obtener claves ya presentes
+        // 1. Leer schema real de SP para esta lista
+        var fieldMap = await getFieldMap(name);
+        var staticKey = fieldMap[key] || key;
+        log_('Schema ' + name + ': ' + JSON.stringify(fieldMap), 'info');
+
+        // 2. Obtener claves ya presentes usando el staticName real
         var ya = new Set();
-        var fetchUrl = '/lists/GetByTitle(\'' + name + '\')/items?$select=' + key + '&$top=5000';
+        var fetchUrl = '/lists/GetByTitle(\'' + name + '\')/items?$select=' + staticKey + '&$top=5000';
         var eData = await spGet(fetchUrl);
-        (eData.value||[]).forEach(function(it){ if (it[key]) ya.add(String(it[key])); });
+        (eData.value||[]).forEach(function(it){
+          var v = it[staticKey] || it[key];
+          if (v) ya.add(String(v));
+        });
         row.querySelector('.list-status').textContent = 'cargando…';
 
         var nuevos = 0, errores = 0;
@@ -504,9 +534,8 @@ async function poblarMaestros() {
           var r = rows[ri];
           var k = r[key] ? String(r[key]) : '';
           if (k && ya.has(k)) continue;
-          // limpiar nulls
-          var fields = {};
-          Object.keys(r).forEach(function(fk){ if (r[fk] !== null && r[fk] !== undefined) fields[fk] = r[fk]; });
+          // Traducir nombres de campo a staticNames reales
+          var fields = translateFields(r, fieldMap);
           try {
             await spPost('/lists/GetByTitle(\'' + name + '\')/items', fields, digest);
             nuevos++; ya.add(k);
