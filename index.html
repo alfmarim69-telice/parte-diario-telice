@@ -5122,33 +5122,41 @@ async function spGetMsal(cfg) {
   return _spMsal;
 }
 
+var _spTokenPromise = null;  // lock: una sola autenticación a la vez
+
 async function spGetToken() {
   if (_spToken && Date.now() < _spTokenExp - 60000) return _spToken;
-  var cfg = await spGetConfig();
-  if (!cfg) return null;
-  try {
-    var msalApp = await spGetMsal(cfg);
-    var scopes = [cfg.spScope || ('https://' + cfg.siteUrl.replace('https://','').split('/')[0] + '/.default')];
-    var accounts = msalApp.getAllAccounts();
-    if (accounts.length > 0) {
-      try {
-        var resp = await msalApp.acquireTokenSilent({ scopes: scopes, account: accounts[0] });
-        _spToken = resp.accessToken;
-        _spTokenExp = resp.expiresOn ? resp.expiresOn.getTime() : Date.now() + 3500000;
-        return _spToken;
-      } catch(se) {
-        console.warn('[SP] Silent falló:', se.message);
+  // Si ya hay una autenticación en curso, esperar a esa misma
+  if (_spTokenPromise) return _spTokenPromise;
+
+  _spTokenPromise = (async function() {
+    var cfg = await spGetConfig();
+    if (!cfg) return null;
+    try {
+      var msalApp = await spGetMsal(cfg);
+      var scopes = [cfg.spScope || ('https://' + cfg.siteUrl.replace('https://','').split('/')[0] + '/.default')];
+      var accounts = msalApp.getAllAccounts();
+      if (accounts.length > 0) {
+        try {
+          var resp = await msalApp.acquireTokenSilent({ scopes: scopes, account: accounts[0] });
+          _spToken = resp.accessToken;
+          _spTokenExp = resp.expiresOn ? resp.expiresOn.getTime() : Date.now() + 3500000;
+          return _spToken;
+        } catch(se) {
+          console.warn('[SP] Silent falló:', se.message);
+        }
       }
+      // Sin cuenta o silent falló: NO hacer popup automático aquí (lo hace el botón)
+      console.log('[SP] No hay sesión — pulsa el botón ☁ SP para conectar');
+      return null;
+    } catch(e) {
+      console.warn('[SP] No se pudo obtener token:', e.message);
+      return null;
+    } finally {
+      _spTokenPromise = null;  // liberar lock
     }
-    // Popup — solo funciona si hay interacción del usuario
-    var resp2 = await msalApp.acquireTokenPopup({ scopes: scopes });
-    _spToken = resp2.accessToken;
-    _spTokenExp = resp2.expiresOn ? resp2.expiresOn.getTime() : Date.now() + 3500000;
-    return _spToken;
-  } catch(e) {
-    console.warn('[SP] No se pudo obtener token:', e.message);
-    return null;
-  }
+  })();
+  return _spTokenPromise;
 }
 
 // GET contra la SP REST API con paginación automática
@@ -5188,8 +5196,17 @@ async function spLeerLista(nombre, _ignorado, maxItems) {
 
 // Caché global de todos los maestros (se descargan una sola vez)
 var _spTodos = null;
+var _spTodosPromise = null;
 
 async function spCargarTodos() {
+  if (_spTodos) return _spTodos;
+  if (_spTodosPromise) return _spTodosPromise;
+  _spTodosPromise = _spCargarTodosInner();
+  try { return await _spTodosPromise; }
+  finally { _spTodosPromise = null; }
+}
+
+async function _spCargarTodosInner() {
   if (_spTodos) return _spTodos;
   var cached = sessionStorage.getItem('sp_todos');
   if (cached) {
@@ -5264,6 +5281,8 @@ async function cargarObraConSP(cod) {
 
 // Función de login manual (disparada por botón — evita bloqueo del navegador)
 async function spLogin() {
+  var btn = document.getElementById('btnSpLogin');
+  if (btn) { btn.disabled = true; btn.textContent = '☁ Conectando…'; }
   var cfg = await spGetConfig();
   if (!cfg) return;
   try {
@@ -5273,42 +5292,48 @@ async function spLogin() {
     _spToken = resp.accessToken;
     _spTokenExp = resp.expiresOn ? resp.expiresOn.getTime() : Date.now() + 3500000;
     console.log('[SP] Login manual OK');
-    document.getElementById('btnSpLogin').style.display = 'none';
+    // Limpiar caché y forzar recarga completa
     sessionStorage.removeItem('sp_todos');
-    _spTodos = null;
+    _spTodos = null; _spTodosPromise = null;
+    // Descargar maestros con el token ya disponible
+    await spCargarTodos();
+    if (btn) btn.style.display = 'none';
     // Recargar obra activa desde SP
     var selO = document.getElementById('obraSelector');
     if (selO && selO.value) await cargarObraConSP(selO.value);
+    console.log('[SP] ✓ Maestros cargados desde SharePoint');
   } catch(e) {
     console.warn('[SP] Login fallido:', e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '☁ SP'; }
   }
 }
 
 // Reemplazar cargarObra globalmente
 cargarObra = cargarObraConSP;
 
-// Al arrancar, cargar silenciosamente la obra del selector
+// Al arrancar: comprobar si hay sesión MSAL.
+// Si la hay -> cargar maestros de SP automáticamente (silent).
+// Si no -> mostrar el botón ☁ SP para que el usuario conecte manualmente.
 window.addEventListener('load', async function() {
-  var selO = document.getElementById('obraSelector');
-  var val = selO ? selO.value : null;
-  if (!val) {
-    // Restaurar selección guardada
-    var saved = localStorage.getItem('telice_obra_activa');
-    val = (saved && OBRAS[saved]) ? saved : Object.keys(OBRAS)[0];
-    if (selO) selO.value = val;
-  }
-  if (val) {
-    await cargarObraConSP(val);
-  }
-  // Mostrar botón SP si no hay token (login pendiente)
   var btnSp = document.getElementById('btnSpLogin');
-  if (btnSp) {
-    var cfg2 = await spGetConfig();
-    if (cfg2) {
-      var msalApp2 = await spGetMsal(cfg2);
-      var accounts2 = msalApp2.getAllAccounts();
-      if (accounts2.length === 0) btnSp.style.display = 'inline-block';
+  var cfg = await spGetConfig();
+  if (!cfg) return;  // sin config, el app usa OBRAS hardcodeado
+
+  var msalApp = await spGetMsal(cfg);
+  var accounts = msalApp.getAllAccounts();
+
+  if (accounts.length > 0) {
+    // Hay sesión: intentar cargar maestros de SP automáticamente
+    console.log('[SP] Sesión detectada, cargando maestros...');
+    var selO = document.getElementById('obraSelector');
+    if (selO && selO.value) {
+      await cargarObraConSP(selO.value);
     }
+    if (btnSp) btnSp.style.display = 'none';
+  } else {
+    // No hay sesión: mostrar botón para conexión manual
+    if (btnSp) btnSp.style.display = 'inline-block';
+    console.log('[SP] Sin sesión — pulsa ☁ SP para conectar con SharePoint');
   }
 });
 
