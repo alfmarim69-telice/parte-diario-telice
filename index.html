@@ -5207,6 +5207,8 @@ async function spCargarTodos() {
   ]);
   _spTodos = { p: res[0]||[], c: res[1]||[], pp: res[2]||[], per: res[3]||[], m: res[4]||[], s: res[5]||[], proy: res[6]||[] };
   console.log('[SP] Total descargado: partidas=' + _spTodos.p.length + ' cert=' + _spTodos.c.length + ' personal=' + _spTodos.per.length);
+  if (_spTodos.p.length > 0) console.log('[SP] M_Partidas[0] keys:', Object.keys(_spTodos.p[0]).join(', '));
+  if (_spTodos.p.length > 0) console.log('[SP] M_Partidas[0] Proyecto field:', _spTodos.p[0]['Proyecto'], '| all:', JSON.stringify(_spTodos.p[0]).slice(0,300));
   try { sessionStorage.setItem('sp_todos', JSON.stringify(_spTodos)); } catch(e) {}
   return _spTodos;
 }
