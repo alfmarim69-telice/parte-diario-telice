@@ -510,6 +510,7 @@
   }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2/lib/msal-browser.min.js"></script>
 </head>
 <body>
 
@@ -5048,6 +5049,257 @@ function exportarExcel() {
     BUSCABLES.forEach(id => hacerBuscable(document.getElementById(id)));
   };
 })();
+
+// ═══════════════════════════════════════════════════════════════
+// INTEGRACIÓN SHAREPOINT — Carga de maestros desde SP
+// Los datos del app (partidas, personal, etc.) se leen de las
+// listas SharePoint en lugar del objeto OBRAS hardcodeado.
+// Fallback automático a OBRAS si SP no está disponible.
+// ═══════════════════════════════════════════════════════════════
+
+var _spCfg = null;       // config.json cacheado
+var _spToken = null;     // token MSAL cacheado
+var _spTokenExp = 0;     // expiración del token
+var _spMsal = null;      // instancia MSAL
+
+// Traducción inversa: nombres en SP (nuevos) → nombres en el objeto obra (originales)
+var SP_TO_OBRA = {
+  // M_Partidas / M_PartidasCert / M_PartidasPpto
+  'PrecioUd': 'pu', 'CosteUd': 'coste_ud',
+  'TaskEjec': 'te', 'TaskSum': 'ts', 'TaskIng': 'ti', 'TaskOtros': 'to',
+  'Unidad': 'ud', 'Descripcion': 'desc', 'Cod': 'cod',
+  'Grupo': '_grupo', 'TipoGrupo': '_tipo_grupo',
+  'Medicion': 'med', 'PuEc': 'pu_ec', 'VentaPpto': 'venta_ppto',
+  'CosteTotalPpto': 'coste_total_ppto', 'Capitulo': 'cap',
+  // M_Personal
+  'Num': 'num', 'Nombre': 'nombre', 'Categoria': 'cat', 'Tipo': 'tipo',
+  'CosteHora': 'ch', 'DietaCompleta': 'dc', 'MediaDieta': 'md', 'KmDieta': 'km',
+  // M_Materiales
+  // (Cod, Descripcion, Unidad, PrecioUd, CosteUd ya cubiertos)
+  // M_Subcontratas
+  'Task': 'task', 'CosteEstudio': 'coste_estudio', 'Tarifa': 'tarifa',
+  'Empresa': 'empresa', 'Contrato': 'contrato',
+};
+
+function spTranslate(row) {
+  var out = {};
+  Object.keys(row).forEach(function(k) {
+    var v = row[k];
+    if (v === null || v === undefined) return;
+    var mapped = SP_TO_OBRA[k];
+    if (mapped) out[mapped] = v;
+    else out[k] = v; // mantener tal cual si no está en el mapa
+  });
+  return out;
+}
+
+// Cargar config.json (clientId, tenantId, siteUrl)
+async function spGetConfig() {
+  if (_spCfg) return _spCfg;
+  try {
+    var r = await fetch('./config.json');
+    if (!r.ok) throw new Error('config.json no encontrado');
+    _spCfg = await r.json();
+    return _spCfg;
+  } catch(e) {
+    console.warn('[SP] No se pudo cargar config.json:', e.message);
+    return null;
+  }
+}
+
+// Inicializar MSAL y obtener token silenciosamente
+async function spGetToken() {
+  // Si el token todavía es válido (con 60s de margen), devolverlo
+  if (_spToken && Date.now() < _spTokenExp - 60000) return _spToken;
+
+  var cfg = await spGetConfig();
+  if (!cfg) return null;
+
+  try {
+    if (!_spMsal) {
+      _spMsal = new msal.PublicClientApplication({
+        auth: {
+          clientId: cfg.clientId,
+          authority: 'https://login.microsoftonline.com/' + cfg.tenantId,
+          redirectUri: window.location.href.split('?')[0].split('#')[0]
+        },
+        cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false }
+      });
+      await _spMsal.initialize();
+    }
+
+    var accounts = _spMsal.getAllAccounts();
+    var tokenResp;
+
+    if (accounts.length > 0) {
+      // Intento silencioso primero
+      try {
+        tokenResp = await _spMsal.acquireTokenSilent({
+          scopes: [cfg.siteUrl.replace(/\/$/, '') + '/.default'],
+          account: accounts[0]
+        });
+      } catch(se) {
+        // Si falla silencioso, popup
+        tokenResp = await _spMsal.acquireTokenPopup({
+          scopes: [cfg.siteUrl.replace(/\/$/, '') + '/.default']
+        });
+      }
+    } else {
+      // Login popup
+      tokenResp = await _spMsal.acquireTokenPopup({
+        scopes: [cfg.siteUrl.replace(/\/$/, '') + '/.default']
+      });
+    }
+
+    _spToken = tokenResp.accessToken;
+    _spTokenExp = tokenResp.expiresOn ? tokenResp.expiresOn.getTime() : Date.now() + 3500000;
+    return _spToken;
+  } catch(e) {
+    console.warn('[SP] No se pudo obtener token:', e.message);
+    return null;
+  }
+}
+
+// GET contra la SP REST API con paginación automática
+async function spGet(relUrl) {
+  var cfg = await spGetConfig();
+  if (!cfg) return null;
+  var tok = await spGetToken();
+  if (!tok) return null;
+
+  var base = cfg.siteUrl.replace(/\/$/, '') + '/_api/web';
+  var all = [];
+  var url = base + relUrl;
+
+  while (url) {
+    var r = await fetch(url, {
+      headers: {
+        'Authorization': 'Bearer ' + tok,
+        'Accept': 'application/json;odata=nometadata'
+      }
+    });
+    if (!r.ok) throw new Error('SP GET ' + r.status + ': ' + url);
+    var data = await r.json();
+    var items = data.value || (data ? [data] : []);
+    all = all.concat(items);
+    // Paginación OData
+    url = data['@odata.nextLink'] || null;
+  }
+  return all;
+}
+
+// Leer todos los ítems de una lista filtrando por Proyecto
+async function spLeerLista(nombre, proyecto, maxItems) {
+  var max = maxItems || 5000;
+  var filtro = "Proyecto eq '" + proyecto + "'";
+  var relUrl = "/lists/GetByTitle('" + nombre + "')/items?$filter=" + encodeURIComponent(filtro) + '&$top=' + max;
+  return await spGet(relUrl);
+}
+
+// Construir el objeto obra igual al que espera cargarObra()
+async function construirObraDesdeSharePoint(cod) {
+  // Verificar caché en sessionStorage
+  var cacheKey = 'sp_obra_' + cod;
+  var cached = sessionStorage.getItem(cacheKey);
+  if (cached) {
+    try {
+      console.log('[SP] Usando caché para', cod);
+      return JSON.parse(cached);
+    } catch(e) {}
+  }
+
+  console.log('[SP] Cargando obra desde SharePoint:', cod);
+
+  // Leer las 7 listas maestras en paralelo
+  var [rawPartidas, rawCert, rawPpto, rawPersonal, rawMat, rawSub, rawProy] = await Promise.all([
+    spLeerLista('M_Partidas',    cod),
+    spLeerLista('M_PartidasCert', cod),
+    spLeerLista('M_PartidasPpto', cod),
+    spLeerLista('M_Personal',    cod),
+    spLeerLista('M_Materiales',  cod),
+    spLeerLista('M_Subcontratas', cod),
+    spLeerLista('M_Proyectos',   cod, 10)
+  ]);
+
+  // Metadatos del proyecto
+  var proyRow = rawProy && rawProy.length ? rawProy[0] : {};
+
+  // Traducir y mapear cada tabla
+  var partidas = (rawPartidas || []).map(spTranslate);
+  var partidas_cert = (rawCert || []).map(spTranslate);
+  var partidas_ppto = (rawPpto || []).map(spTranslate);
+  var personal = (rawPersonal || []).map(spTranslate);
+  var mat = (rawMat || []).map(spTranslate);
+  var sub = (rawSub || []).map(spTranslate);
+
+  // El objeto obra debe tener las mismas claves que OBRAS[cod]
+  var obra = {
+    codigo:    cod,
+    nombre:    proyRow.Nombre || cod,
+    tipo:      (proyRow.Tipo  || '').toLowerCase(),
+    incentivos: (proyRow.Incentivos || 'ninguno').toLowerCase(),
+    partidas:       partidas,
+    partidas_cert:  partidas_cert,
+    partidas_ppto:  partidas_ppto,
+    personal:       personal,
+    mat:            mat,
+    sub:            sub,
+    maq_obra:       []  // maquinaria específica: vacío por ahora (se usa MAQ_CORP_BASE global)
+  };
+
+  // Cachear en sessionStorage (solo para esta sesión del navegador)
+  try {
+    sessionStorage.setItem(cacheKey, JSON.stringify(obra));
+  } catch(e) {
+    console.warn('[SP] No se pudo cachear obra:', e.message);
+  }
+
+  console.log('[SP] Obra cargada:', cod,
+    '| partidas:', partidas.length,
+    '| personal:', personal.length,
+    '| cert:', partidas_cert.length);
+  return obra;
+}
+
+// Versión mejorada de cargarObra() con SP + fallback
+var _cargarObraOriginal = cargarObra;
+
+async function cargarObraConSP(cod) {
+  // Intentar cargar desde SharePoint
+  try {
+    var cfg = await spGetConfig();
+    if (cfg) {
+      var obra = await construirObraDesdeSharePoint(cod);
+      if (obra && obra.partidas && obra.partidas.length > 0) {
+        // Inyectar en OBRAS para que el resto del código funcione igual
+        OBRAS[cod] = obra;
+        console.log('[SP] Obra ' + cod + ' inyectada desde SharePoint');
+      }
+    }
+  } catch(e) {
+    console.warn('[SP] Fallback a datos locales para', cod, ':', e.message);
+  }
+  // Siempre llamar a la función original (usará los datos de OBRAS, ya sea SP o local)
+  _cargarObraOriginal(cod);
+}
+
+// Reemplazar cargarObra globalmente
+cargarObra = cargarObraConSP;
+
+// Al arrancar, cargar silenciosamente la obra del selector
+window.addEventListener('load', async function() {
+  var selO = document.getElementById('obraSelector');
+  var val = selO ? selO.value : null;
+  if (!val) {
+    // Restaurar selección guardada
+    var saved = localStorage.getItem('telice_obra_activa');
+    val = (saved && OBRAS[saved]) ? saved : Object.keys(OBRAS)[0];
+    if (selO) selO.value = val;
+  }
+  if (val) {
+    await cargarObraConSP(val);
+  }
+});
 
 </script>
 </body>
