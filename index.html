@@ -5188,76 +5188,62 @@ async function spGet(relUrl) {
   return all;
 }
 
-// Leer todos los ítems de una lista filtrando por Proyecto
-async function spLeerLista(nombre, proyecto, maxItems) {
+// Traer todos los ítems de una lista (sin filtro OData — filtramos en cliente)
+async function spLeerLista(nombre, _ignorado, maxItems) {
   var max = maxItems || 5000;
-  var filtro = "Proyecto eq '" + proyecto + "'";
-  var relUrl = "/lists/GetByTitle('" + nombre + "')/items?$filter=" + encodeURIComponent(filtro) + '&$top=' + max;
+  var relUrl = "/lists/GetByTitle('" + nombre + "')/items?$top=" + max;
   return await spGet(relUrl);
+}
+
+// Caché global de todos los maestros (se descargan una sola vez)
+var _spTodos = null;
+
+async function spCargarTodos() {
+  if (_spTodos) return _spTodos;
+  var cached = sessionStorage.getItem('sp_todos');
+  if (cached) {
+    try { _spTodos = JSON.parse(cached); console.log('[SP] Maestros desde sessionStorage'); return _spTodos; } catch(e) {}
+  }
+  console.log('[SP] Descargando todos los maestros...');
+  var res = await Promise.all([
+    spLeerLista('M_Partidas'),
+    spLeerLista('M_PartidasCert'),
+    spLeerLista('M_PartidasPpto'),
+    spLeerLista('M_Personal'),
+    spLeerLista('M_Materiales'),
+    spLeerLista('M_Subcontratas'),
+    spLeerLista('M_Proyectos', null, 50)
+  ]);
+  _spTodos = { p: res[0]||[], c: res[1]||[], pp: res[2]||[], per: res[3]||[], m: res[4]||[], s: res[5]||[], proy: res[6]||[] };
+  console.log('[SP] Total descargado: partidas=' + _spTodos.p.length + ' cert=' + _spTodos.c.length + ' personal=' + _spTodos.per.length);
+  try { sessionStorage.setItem('sp_todos', JSON.stringify(_spTodos)); } catch(e) {}
+  return _spTodos;
 }
 
 // Construir el objeto obra igual al que espera cargarObra()
 async function construirObraDesdeSharePoint(cod) {
-  // Verificar caché en sessionStorage
-  var cacheKey = 'sp_obra_' + cod;
-  var cached = sessionStorage.getItem(cacheKey);
-  if (cached) {
-    try {
-      console.log('[SP] Usando caché para', cod);
-      return JSON.parse(cached);
-    } catch(e) {}
-  }
+  var m = await spCargarTodos();
+  if (!m) return null;
 
-  console.log('[SP] Cargando obra desde SharePoint:', cod);
+  var f = function(arr) { return arr.filter(function(r){ return r.Proyecto === cod; }); };
+  var proyRow = m.proy.filter(function(r){ return r.Codigo === cod; })[0] || {};
 
-  // Leer las 7 listas maestras en paralelo
-  var [rawPartidas, rawCert, rawPpto, rawPersonal, rawMat, rawSub, rawProy] = await Promise.all([
-    spLeerLista('M_Partidas',    cod),
-    spLeerLista('M_PartidasCert', cod),
-    spLeerLista('M_PartidasPpto', cod),
-    spLeerLista('M_Personal',    cod),
-    spLeerLista('M_Materiales',  cod),
-    spLeerLista('M_Subcontratas', cod),
-    spLeerLista('M_Proyectos',   cod, 10)
-  ]);
+  var partidas      = f(m.p).map(spTranslate);
+  var partidas_cert = f(m.c).map(spTranslate);
+  var partidas_ppto = f(m.pp).map(spTranslate);
+  var personal      = f(m.per).map(spTranslate);
+  var mat           = f(m.m).map(spTranslate);
+  var sub           = f(m.s).map(spTranslate);
 
-  // Metadatos del proyecto
-  var proyRow = rawProy && rawProy.length ? rawProy[0] : {};
+  console.log('[SP] Obra', cod, '| partidas:', partidas.length, '| cert:', partidas_cert.length, '| personal:', personal.length);
 
-  // Traducir y mapear cada tabla
-  var partidas = (rawPartidas || []).map(spTranslate);
-  var partidas_cert = (rawCert || []).map(spTranslate);
-  var partidas_ppto = (rawPpto || []).map(spTranslate);
-  var personal = (rawPersonal || []).map(spTranslate);
-  var mat = (rawMat || []).map(spTranslate);
-  var sub = (rawSub || []).map(spTranslate);
-
-  // El objeto obra debe tener las mismas claves que OBRAS[cod]
   var obra = {
-    codigo:    cod,
-    nombre:    proyRow.Nombre || cod,
-    tipo:      (proyRow.Tipo  || '').toLowerCase(),
+    codigo: cod, nombre: proyRow.Nombre || cod,
+    tipo: (proyRow.Tipo || '').toLowerCase(),
     incentivos: (proyRow.Incentivos || 'ninguno').toLowerCase(),
-    partidas:       partidas,
-    partidas_cert:  partidas_cert,
-    partidas_ppto:  partidas_ppto,
-    personal:       personal,
-    mat:            mat,
-    sub:            sub,
-    maq_obra:       []  // maquinaria específica: vacío por ahora (se usa MAQ_CORP_BASE global)
+    partidas: partidas, partidas_cert: partidas_cert, partidas_ppto: partidas_ppto,
+    personal: personal, mat: mat, sub: sub, maq_obra: []
   };
-
-  // Cachear en sessionStorage (solo para esta sesión del navegador)
-  try {
-    sessionStorage.setItem(cacheKey, JSON.stringify(obra));
-  } catch(e) {
-    console.warn('[SP] No se pudo cachear obra:', e.message);
-  }
-
-  console.log('[SP] Obra cargada:', cod,
-    '| partidas:', partidas.length,
-    '| personal:', personal.length,
-    '| cert:', partidas_cert.length);
   return obra;
 }
 
