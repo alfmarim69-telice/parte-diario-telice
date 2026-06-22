@@ -5133,7 +5133,7 @@ async function spGetToken() {
 
   try {
     var msalApp = await spGetMsal(cfg);
-    var scopes = [cfg.siteUrl.replace(/\/+$/, '') + '/.default'];
+    var scopes = ['https://' + cfg.siteUrl.replace('https://','').split('/')[0] + '/.default'];
     var accounts = msalApp.getAllAccounts();
 
     if (accounts.length > 0) {
