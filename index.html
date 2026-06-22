@@ -5107,58 +5107,78 @@ async function spGetConfig() {
   }
 }
 
-// Inicializar MSAL y obtener token silenciosamente
-async function spGetToken() {
-  // Si el token todavía es válido (con 60s de margen), devolverlo
-  if (_spToken && Date.now() < _spTokenExp - 60000) return _spToken;
+// Inicializar MSAL y obtener token (silent primero, redirect si falla)
+var _spTokenPending = false;
 
+async function spGetMsal(cfg) {
+  if (_spMsal) return _spMsal;
+  _spMsal = new msal.PublicClientApplication({
+    auth: {
+      clientId: cfg.clientId,
+      authority: 'https://login.microsoftonline.com/' + cfg.tenantId,
+      redirectUri: window.location.href.split('?')[0].split('#')[0]
+    },
+    cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false }
+  });
+  await _spMsal.initialize();
+  // Procesar redirect de vuelta si venimos de un login redirect
+  try { await _spMsal.handleRedirectPromise(); } catch(e) {}
+  return _spMsal;
+}
+
+async function spGetToken() {
+  if (_spToken && Date.now() < _spTokenExp - 60000) return _spToken;
   var cfg = await spGetConfig();
   if (!cfg) return null;
 
   try {
-    if (!_spMsal) {
-      _spMsal = new msal.PublicClientApplication({
-        auth: {
-          clientId: cfg.clientId,
-          authority: 'https://login.microsoftonline.com/' + cfg.tenantId,
-          redirectUri: window.location.href.split('?')[0].split('#')[0]
-        },
-        cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false }
-      });
-      await _spMsal.initialize();
-    }
-
-    var accounts = _spMsal.getAllAccounts();
-    var tokenResp;
+    var msalApp = await spGetMsal(cfg);
+    var scopes = [cfg.siteUrl.replace(/\/+$/, '') + '/.default'];
+    var accounts = msalApp.getAllAccounts();
 
     if (accounts.length > 0) {
-      // Intento silencioso primero
+      // Intento silencioso
       try {
-        tokenResp = await _spMsal.acquireTokenSilent({
-          scopes: [cfg.siteUrl.replace(/\/$/, '') + '/.default'],
-          account: accounts[0]
-        });
+        var resp = await msalApp.acquireTokenSilent({ scopes: scopes, account: accounts[0] });
+        _spToken = resp.accessToken;
+        _spTokenExp = resp.expiresOn ? resp.expiresOn.getTime() : Date.now() + 3500000;
+        return _spToken;
       } catch(se) {
-        // Si falla silencioso, popup
-        tokenResp = await _spMsal.acquireTokenPopup({
-          scopes: [cfg.siteUrl.replace(/\/$/, '') + '/.default']
-        });
+        console.warn('[SP] Silent falló, usando redirect:', se.message);
       }
-    } else {
-      // Login popup
-      tokenResp = await _spMsal.acquireTokenPopup({
-        scopes: [cfg.siteUrl.replace(/\/$/, '') + '/.default']
-      });
     }
 
-    _spToken = tokenResp.accessToken;
-    _spTokenExp = tokenResp.expiresOn ? tokenResp.expiresOn.getTime() : Date.now() + 3500000;
-    return _spToken;
+    // Redirect (no popup — los navegadores no lo bloquean)
+    if (!_spTokenPending) {
+      _spTokenPending = true;
+      sessionStorage.setItem('sp_redirect_back', '1');
+      await msalApp.acquireTokenRedirect({ scopes: scopes });
+      // No llega aquí — el navegador redirige a Microsoft
+    }
+    return null;
   } catch(e) {
     console.warn('[SP] No se pudo obtener token:', e.message);
     return null;
   }
 }
+
+// Al arrancar: si venimos de un redirect de login, procesar el token
+(async function() {
+  var cfg = await spGetConfig();
+  if (!cfg) return;
+  try {
+    var msalApp = await spGetMsal(cfg);
+    var result = await msalApp.handleRedirectPromise();
+    if (result && result.accessToken) {
+      _spToken = result.accessToken;
+      _spTokenExp = result.expiresOn ? result.expiresOn.getTime() : Date.now() + 3500000;
+      console.log('[SP] Token obtenido tras redirect');
+      sessionStorage.removeItem('sp_redirect_back');
+    }
+  } catch(e) {
+    console.warn('[SP] Error procesando redirect:', e.message);
+  }
+})();
 
 // GET contra la SP REST API con paginación automática
 async function spGet(relUrl) {
