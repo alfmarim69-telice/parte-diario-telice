@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin · Listas SharePoint — Parte Diario Telice</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',sans-serif;background:#f0f2f5;color:#1b1b1f;min-height:100vh}
+header{background:#1a3a5c;color:#fff;padding:16px 28px;display:flex;align-items:center;gap:14px;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+header svg{flex-shrink:0}
+.header-text h1{font-size:16px;font-weight:700;letter-spacing:.02em}
+.header-text p{font-size:12px;opacity:.7;margin-top:2px}
+#userBadge{margin-left:auto;background:rgba(255,255,255,.12);border-radius:20px;padding:5px 14px;font-size:12px;display:none}
+
+.wrap{max-width:860px;margin:24px auto;padding:0 20px}
+
+.card{background:#fff;border-radius:8px;padding:20px 24px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.card-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#1a3a5c;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #e4e8ee}
+
+/* auth row */
+.auth-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#statusBar{font-size:13px;padding:9px 14px;border-radius:5px;margin-top:10px;display:none;line-height:1.4}
+.ok  {background:#e6f4ea;color:#1a6e2e}
+.err {background:#fce8e8;color:#b71c1c}
+.info{background:#e3f0fc;color:#0a4b8a}
+
+/* lista progress */
+.list-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+@media(max-width:540px){.list-grid{grid-template-columns:1fr}}
+.list-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:5px;background:#f6f8fb;font-size:12.5px;transition:background .2s}
+.list-row.done{background:#e6f4ea}
+.list-row.err {background:#fce8e8}
+.list-row.active{background:#e3f0fc}
+.dot{width:8px;height:8px;border-radius:50%;background:#c8cdd5;flex-shrink:0;transition:background .3s}
+.done .dot{background:#1a6e2e}
+.err  .dot{background:#b71c1c}
+.active .dot{background:#0a4b8a;box-shadow:0 0 0 3px rgba(10,75,138,.2)}
+.list-name{flex:1;font-weight:600}
+.list-status{font-size:11px;color:#606470}
+
+/* counts */
+.counts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+@media(max-width:540px){.counts{grid-template-columns:repeat(2,1fr)}}
+.count-box{background:#f6f8fb;border-radius:6px;padding:10px 12px;text-align:center}
+.count-n{font-size:22px;font-weight:700;color:#1a3a5c}
+.count-l{font-size:11px;color:#606470;margin-top:2px}
+
+/* log */
+#log{font-size:11.5px;font-family:'Cascadia Code','Consolas',monospace;background:#1b1f27;color:#c9d1d9;border-radius:6px;padding:14px 16px;max-height:220px;overflow-y:auto;margin-top:10px;display:none;line-height:1.55}
+.log-ok  {color:#56d364}
+.log-err {color:#f85149}
+.log-info{color:#79c0ff}
+.log-warn{color:#e3b341}
+
+/* buttons */
+.btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+button{padding:8px 20px;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600;transition:opacity .15s}
+button:disabled{opacity:.45;cursor:not-allowed}
+.btn-primary  {background:#1a3a5c;color:#fff}
+.btn-success  {background:#1a6e2e;color:#fff}
+.btn-danger   {background:#a50e0e;color:#fff}
+.btn-neutral  {background:#e4e8ee;color:#1b1b1f}
+button:not(:disabled):hover{opacity:.85}
+
+/* progress bar */
+.progress-wrap{height:4px;background:#e4e8ee;border-radius:2px;margin-top:12px;overflow:hidden;display:none}
+.progress-bar{height:100%;background:#1a3a5c;width:0;transition:width .3s}
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect width="28" height="28" rx="6" fill="rgba(255,255,255,.15)"/><path d="M7 8h14M7 14h14M7 20h9" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+  <div class="header-text">
+    <h1>Administración · Listas SharePoint</h1>
+    <p>Parte Diario de Obra — Telice</p>
+  </div>
+  <span id="userBadge"></span>
+</header>
+
+<div class="wrap">
+
+  <!-- AUTH -->
+  <div class="card">
+    <div class="card-title">Sesión</div>
+    <div class="auth-row">
+      <button class="btn-primary" id="btnLogin"  onclick="login()"  disabled>Iniciando…</button>
+      <button class="btn-danger"  id="btnLogout" onclick="logout()" style="display:none">Cerrar sesión</button>
+    </div>
+    <div id="statusBar"></div>
+  </div>
+
+  <!-- RESUMEN -->
+  <div class="card">
+    <div class="card-title">Modelo de datos — 16 listas</div>
+    <div class="counts">
+      <div class="count-box"><div class="count-n">7</div><div class="count-l">Maestros</div></div>
+      <div class="count-box"><div class="count-n">9</div><div class="count-l">Transaccionales</div></div>
+      <div class="count-box"><div class="count-n" id="cntCreadas">0</div><div class="count-l">Creadas</div></div>
+      <div class="count-box"><div class="count-n" id="cntRegistros">0</div><div class="count-l">Registros cargados</div></div>
+    </div>
+  </div>
+
+  <!-- CREAR LISTAS -->
+  <div class="card">
+    <div class="card-title">1 · Crear listas (idempotente)</div>
+    <p style="font-size:13px;color:#606470;margin-bottom:14px">Si una lista ya existe se omite. Requiere permiso <strong>AllSites.Manage</strong>.</p>
+    <div class="btns">
+      <button class="btn-success" id="btnCrear" onclick="crearListas()" disabled>Crear las 16 listas</button>
+      <button class="btn-neutral" onclick="verificarListas()" id="btnVerif" disabled>Verificar existentes</button>
+      <button class="btn-danger" onclick="borrarListas()" id="btnBorrar" disabled>⚠ Borrar las 16 listas</button>
+    </div>
+    <div class="progress-wrap" id="progCrear"><div class="progress-bar" id="progBarCrear"></div></div>
+    <div class="list-grid" id="listGrid" style="margin-top:12px"></div>
+  </div>
+
+  <!-- POBLAR MAESTROS -->
+  <div class="card">
+    <div class="card-title">2 · Cargar maestros desde JSON</div>
+    <p style="font-size:13px;color:#606470;margin-bottom:14px">Selecciona el <code>maestros_export.json</code> generado por el script Python. Dedupea por clave natural.</p>
+    <div class="btns">
+      <label style="padding:8px 20px;border-radius:5px;background:#e4e8ee;color:#1b1b1f;font-size:13px;font-weight:600;cursor:pointer">
+        <span id="fileLabel">Seleccionar JSON…</span>
+        <input type="file" id="jsonFile" accept=".json" style="display:none" onchange="onFileSelected(this)">
+      </label>
+      <button class="btn-success" id="btnPoblar" onclick="poblarMaestros()" disabled>Cargar maestros</button>
+    </div>
+    <div class="progress-wrap" id="progPoblar"><div class="progress-bar" id="progBarPoblar"></div></div>
+    <div id="poblarGrid" class="list-grid" style="margin-top:12px"></div>
+  </div>
+
+  <!-- LOG -->
+  <div class="card">
+    <div class="card-title">Log de operaciones</div>
+    <div class="btns"><button class="btn-neutral" onclick="toggleLog()">Mostrar / ocultar</button><button class="btn-neutral" onclick="clearLog()">Limpiar</button></div>
+    <div id="log"></div>
+  </div>
+
+</div><!-- /wrap -->
+
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2/lib/msal-browser.js"
+  onerror="this.onerror=null;this.src='https://unpkg.com/@azure/msal-browser@2/lib/msal-browser.js'"></script>
+<script>
+// ============================================================
+// CONFIG + MSAL
+// ============================================================
+var _cfg = null, _msal = null, _jsonData = null;
+
+async function loadConfig() {
+  var base = window.location.pathname.replace(/\/[^/]*$/, '/');
+  var url  = window.location.origin + base + 'config.json';
+  var r = await fetch(url);
+  if (!r.ok) throw new Error('config.json no encontrado en ' + url);
+  var c = await r.json();
+  if (!c.clientId || !c.tenantId || !c.siteUrl) throw new Error('config.json incompleto');
+  return c;
+}
+
+function initMsal(cfg) {
+  _msal = new msal.PublicClientApplication({
+    auth: { clientId: cfg.clientId,
+            authority: 'https://login.microsoftonline.com/' + cfg.tenantId,
+            redirectUri: window.location.origin + window.location.pathname },
+    cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
+  });
+}
+
+function getScopes() {
+  return [new URL(_cfg.siteUrl).origin + '/AllSites.Manage'];
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+async function login() {
+  status_('Abriendo ventana de login…', 'info');
+  try {
+    var r = await _msal.loginPopup({ scopes: getScopes() });
+    setUser(r.account); status_('Sesión iniciada', 'ok');
+    habilitarBotones(true);
+  } catch(e) { status_('Error login: ' + e.message, 'err'); }
+}
+
+function logout() {
+  var ac = _msal.getAllAccounts();
+  if (ac.length) _msal.logoutPopup({ account: ac[0] });
+  document.getElementById('userBadge').style.display = 'none';
+  document.getElementById('btnLogout').style.display = 'none';
+  document.getElementById('btnLogin').style.display  = '';
+  habilitarBotones(false); status_('Sesión cerrada', 'info');
+}
+
+function setUser(acc) {
+  var b = document.getElementById('userBadge');
+  b.textContent = acc.name;
+  b.style.display = 'inline-block';
+  document.getElementById('btnLogin').style.display  = 'none';
+  document.getElementById('btnLogout').style.display = '';
+}
+
+async function getToken() {
+  var ac = _msal.getAllAccounts();
+  if (!ac.length) throw new Error('Sin sesión activa');
+  try { return (await _msal.acquireTokenSilent({ scopes: getScopes(), account: ac[0] })).accessToken; }
+  catch(e) { return (await _msal.acquireTokenPopup({ scopes: getScopes() })).accessToken; }
+}
+
+async function borrarListas() {
+  if (!confirm('¿Seguro? Se borrarán las 16 listas y todos sus datos.')) return;
+  document.getElementById('btnBorrar').disabled = true;
+  var digest = await getDigest();
+  var ya = await existing(_token_cache || await getTokenAndCache(), await getSiteId());
+  // versión simplificada: usar spPost con DELETE
+  var tok = await getToken();
+  var deleted = 0, errors = 0;
+  for (var i = 0; i < ALL_LISTS.length; i++) {
+    var name = ALL_LISTS[i];
+    var lid = (await spGet('/lists/GetByTitle(\'' + name + '\')?$select=Id')).Id;
+    if (!lid) { log_('No existe: ' + name, 'warn'); continue; }
+    try {
+      var r = await fetch(_cfg.siteUrl.replace(/\/$/, '') + '/_api/web/lists(guid\'' + lid + '\')', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + await getToken(),
+          'X-RequestDigest': digest,
+          'X-HTTP-Method': 'DELETE',
+          'IF-MATCH': '*'
+        }
+      });
+      if (r.ok || r.status === 204) { log_('Borrada: ' + name, 'ok'); deleted++; }
+      else { log_('Error borrando ' + name + ': ' + r.status, 'err'); errors++; }
+    } catch(e) { log_('Error: ' + name + ' ' + e.message, 'err'); errors++; }
+    await new Promise(function(r){ setTimeout(r, 300); });
+  }
+  status_(deleted + ' listas borradas' + (errors > 0 ? ', ' + errors + ' errores' : ''), errors > 0 ? 'err' : 'ok');
+  document.getElementById('btnBorrar').disabled = false;
+}
+
+function habilitarBotones(on) {
+  ['btnCrear','btnVerif','btnBorrar'].forEach(function(id){ document.getElementById(id).disabled = !on; });
+  if (!on) document.getElementById('btnPoblar').disabled = true;
+  else if (_jsonData) document.getElementById('btnPoblar').disabled = false;
+}
+
+// ============================================================
+// MODELO DE LISTAS (espejo del script Python)
+// ============================================================
+var MASTERS = ['M_Proyectos','M_Partidas','M_PartidasCert','M_PartidasPpto',
+               'M_Personal','M_Materiales','M_Subcontratas'];
+var SYNC    = ['Partes','PartePersonal','ParteMaquinaria','ParteMateriales',
+               'ParteSubcontratas','ParteOtros','ParteProduccion','ParteCostes','ParteIndirectos'];
+var ALL_LISTS = MASTERS.concat(SYNC);
+
+var LIST_SCHEMA = {
+  M_Proyectos:      [{n:'Codigo',t:'T'},{n:'Nombre',t:'T'},{n:'Tipo',t:'T'},{n:'Incentivos',t:'T'}],
+  M_Partidas:       [{n:'Clave',t:'T'},{n:'Proyecto',t:'T'},{n:'Cod',t:'T'},{n:'Descripcion',t:'N'},
+                     {n:'Unidad',t:'T'},{n:'PrecioUd',t:'CUR'},{n:'CosteUd',t:'CUR'},{n:'TaskEjec',t:'T'},
+                     {n:'TaskSum',t:'T'},{n:'TaskIng',t:'T'},{n:'TaskOtros',t:'T'},{n:'Grupo',t:'T'},
+                     {n:'TipoGrupo',t:'CH',o:['EJEC','SUM','ING','OTROS']}],
+  M_PartidasCert:   [{n:'Clave',t:'T'},{n:'Proyecto',t:'T'},{n:'Cod',t:'T'},{n:'Descripcion',t:'N'},
+                     {n:'Unidad',t:'T'},{n:'Medicion',t:'NUM'},{n:'PrecioUd',t:'CUR'},{n:'VentaPpto',t:'CUR'},
+                     {n:'CosteUd',t:'CUR'},{n:'Capitulo',t:'T'},{n:'TaskEjec',t:'T'},{n:'TaskSum',t:'T'},
+                     {n:'TaskIng',t:'T'},{n:'TaskOtros',t:'T'}],
+  M_PartidasPpto:   [{n:'Clave',t:'T'},{n:'Proyecto',t:'T'},{n:'Cod',t:'T'},{n:'Descripcion',t:'N'},
+                     {n:'Unidad',t:'T'},{n:'Medicion',t:'NUM'},{n:'PuEc',t:'CUR'},{n:'CosteUd',t:'CUR'},
+                     {n:'VentaPpto',t:'CUR'},{n:'CosteTotalPpto',t:'CUR'},{n:'TaskEjec',t:'T'},
+                     {n:'TaskSum',t:'T'},{n:'TaskIng',t:'T'},{n:'TaskOtros',t:'T'}],
+  M_Personal:       [{n:'Clave',t:'T'},{n:'Proyecto',t:'T'},{n:'Num',t:'T'},{n:'Nombre',t:'T'},
+                     {n:'Categoria',t:'T'},{n:'Tipo',t:'CH',o:['ENC','MOD','EXT']},
+                     {n:'CosteHora',t:'CUR'},{n:'DietaCompleta',t:'CUR'},{n:'MediaDieta',t:'CUR'},{n:'KmDieta',t:'NUM'}],
+  M_Materiales:     [{n:'Clave',t:'T'},{n:'Proyecto',t:'T'},{n:'Cod',t:'T'},{n:'Descripcion',t:'N'},
+                     {n:'Unidad',t:'T'},{n:'PrecioUd',t:'CUR'},{n:'CosteUd',t:'CUR'},{n:'TaskEjec',t:'T'},
+                     {n:'TaskSum',t:'T'},{n:'Grupo',t:'T'}],
+  M_Subcontratas:   [{n:'Clave',t:'T'},{n:'Proyecto',t:'T'},{n:'Task',t:'T'},{n:'Cod',t:'T'},
+                     {n:'Descripcion',t:'N'},{n:'Unidad',t:'T'},{n:'CosteEstudio',t:'CUR'},
+                     {n:'Tarifa',t:'CUR'},{n:'Empresa',t:'T'},{n:'Contrato',t:'T'}],
+  Partes:           [{n:'ParteId',t:'T'},{n:'Proyecto',t:'T'},{n:'Fecha',t:'T'},{n:'Semana',t:'T'},
+                     {n:'Estado',t:'CH',o:['borrador','pendiente_costes','validado','devuelto']},
+                     {n:'Responsable',t:'T'},{n:'Cuadrilla',t:'T'},{n:'Unidad',t:'T'},
+                     {n:'HoraEntrada',t:'T'},{n:'HoraParada',t:'T'},{n:'HoraReinicio',t:'T'},{n:'HoraSalida',t:'T'},
+                     {n:'Meteo',t:'T'},{n:'Provincia',t:'T'},{n:'Lugar',t:'T'},
+                     {n:'Observaciones',t:'N'},{n:'RolOrigen',t:'T'},{n:'Guardado',t:'T'},{n:'Enviado',t:'B'}],
+  PartePersonal:    [{n:'LineaId',t:'T'},{n:'ParteId',t:'T'},{n:'Num',t:'T'},{n:'Nombre',t:'T'},
+                     {n:'Horas',t:'NUM'},{n:'Dieta',t:'T'},{n:'CosteDieta',t:'CUR'},{n:'Pernocta',t:'B'},
+                     {n:'KmDieta',t:'NUM'},{n:'Tipo',t:'T'},{n:'CosteHora',t:'CUR'},{n:'CosteMod',t:'CUR'}],
+  ParteMaquinaria:  [{n:'LineaId',t:'T'},{n:'ParteId',t:'T'},{n:'Cod',t:'T'},{n:'Descripcion',t:'N'},
+                     {n:'Horas',t:'NUM'},{n:'Unidad',t:'T'},{n:'Tarifa',t:'CUR'},{n:'CosteMaq',t:'CUR'}],
+  ParteMateriales:  [{n:'LineaId',t:'T'},{n:'ParteId',t:'T'},{n:'Cod',t:'T'},{n:'Descripcion',t:'N'},
+                     {n:'Unidad',t:'T'},{n:'Cant',t:'NUM'},{n:'CosteUd',t:'CUR'},{n:'CosteTotal',t:'CUR'},
+                     {n:'TaskSum',t:'T'},{n:'TaskEjec',t:'T'},{n:'Albaran',t:'T'}],
+  ParteSubcontratas:[{n:'LineaId',t:'T'},{n:'ParteId',t:'T'},{n:'Cod',t:'T'},{n:'Descripcion',t:'N'},
+                     {n:'Unidad',t:'T'},{n:'Cant',t:'NUM'},{n:'Tarifa',t:'CUR'},{n:'CosteTotal',t:'CUR'},
+                     {n:'CosteEstudio',t:'CUR'},{n:'Empresa',t:'T'},{n:'Contrato',t:'T'}],
+  ParteOtros:       [{n:'LineaId',t:'T'},{n:'ParteId',t:'T'},{n:'Cod',t:'T'},{n:'Concepto',t:'N'},
+                     {n:'Categoria',t:'T'},{n:'Importe',t:'CUR'}],
+  ParteProduccion:  [{n:'LineaId',t:'T'},{n:'ParteId',t:'T'},{n:'PartidaCod',t:'T'},{n:'PartidaDesc',t:'N'},
+                     {n:'Unidad',t:'T'},{n:'PrecioUd',t:'CUR'},{n:'Cant',t:'NUM'},{n:'Importe',t:'CUR'},
+                     {n:'TaskEjec',t:'T'},{n:'TaskSum',t:'T'},{n:'Capitulo',t:'T'},
+                     {n:'PkIni',t:'T'},{n:'PkFin',t:'T'}],
+  ParteCostes:      [{n:'LineaId',t:'T'},{n:'ParteId',t:'T'},{n:'TaskCod',t:'T'},{n:'TaskDesc',t:'N'},
+                     {n:'Pct',t:'NUM'},{n:'Tipo',t:'CH',o:['MOD','MAQ','MAQ+OP','MAT','SUB','OTROS']},
+                     {n:'CosteMod',t:'CUR'},{n:'CosteMaq',t:'CUR'},{n:'CosteMat',t:'CUR'},
+                     {n:'CosteSub',t:'CUR'},{n:'CosteOtros',t:'CUR'},{n:'CosteReal',t:'CUR'},
+                     {n:'RecursosJSON',t:'N'}],
+  ParteIndirectos:  [{n:'LineaId',t:'T'},{n:'ParteId',t:'T'},{n:'Cod',t:'T'},{n:'Categoria',t:'T'},
+                     {n:'Concepto',t:'N'},{n:'Importe',t:'CUR'}]
+};
+
+var LIST_KEY = {
+  M_Proyectos:'Codigo', M_Partidas:'Clave', M_PartidasCert:'Clave', M_PartidasPpto:'Clave',
+  M_Personal:'Clave', M_Materiales:'Clave', M_Subcontratas:'Clave'
+};
+
+// ============================================================
+// SHAREPOINT REST HELPERS
+// ============================================================
+function spUrl(path) {
+  return _cfg.siteUrl.replace(/\/$/, '') + '/_api/web' + path;
+}
+
+async function spGet(path) {
+  var t = await getToken();
+  var r = await fetch(spUrl(path), {
+    headers: { 'Authorization':'Bearer '+t, 'Accept':'application/json;odata=nometadata' }
+  });
+  if (!r.ok) { var e = await spError(r); throw new Error(e); }
+  return r.json();
+}
+
+async function spPost(path, body, digest) {
+  var t = await getToken();
+  var h = { 'Authorization':'Bearer '+t, 'Accept':'application/json;odata=nometadata',
+            'Content-Type':'application/json;odata=nometadata' };
+  if (digest) { h['X-RequestDigest'] = digest; }
+  var r = await fetch(spUrl(path), { method:'POST', headers:h, body:JSON.stringify(body) });
+  if (!r.ok) { var e = await spError(r); throw new Error(e); }
+  return r.status === 204 ? {} : r.json();
+}
+
+async function spError(r) {
+  try { var j = await r.json(); return 'HTTP '+r.status+': '+(j.error&&j.error.message&&j.error.message.value||JSON.stringify(j)); }
+  catch(e) { return 'HTTP '+r.status; }
+}
+
+async function getDigest() {
+  var t = await getToken();
+  var r = await fetch(_cfg.siteUrl.replace(/\/$/, '') + '/_api/contextinfo', {
+    method:'POST', headers:{'Authorization':'Bearer '+t,'Accept':'application/json;odata=nometadata','Content-Length':'0'}
+  });
+  var j = await r.json();
+  return j.FormDigestValue;
+}
+
+// ============================================================
+// SCHEMA -> SP field definitions
+// ============================================================
+function buildFieldXml(f) {
+  if (f.t === 'T')   return {FieldTypeKind:2, Title:f.n};
+  if (f.t === 'N')   return {FieldTypeKind:3, Title:f.n};
+  if (f.t === 'NUM') return {FieldTypeKind:9, Title:f.n};
+  if (f.t === 'CUR') return {FieldTypeKind:10, Title:f.n, CurrencyLocaleId:3082};
+  if (f.t === 'B')   return {FieldTypeKind:8, Title:f.n};
+  if (f.t === 'CH')  return {FieldTypeKind:6, Title:f.n, Choices:{results:f.o}};
+  return {FieldTypeKind:2, Title:f.n};
+}
+
+// ============================================================
+// CREAR LISTAS
+// ============================================================
+var _listIds = {};
+
+async function verificarListas() {
+  status_('Verificando listas existentes…', 'info');
+  try {
+    var data = await spGet('/lists?$select=Title,Id&$top=300');
+    var existing = {};
+    (data.value||[]).forEach(function(l){ existing[l.Title]=l.Id; });
+    renderListGrid(existing);
+    var n = ALL_LISTS.filter(function(l){ return !!existing[l]; }).length;
+    document.getElementById('cntCreadas').textContent = n;
+    status_(n + ' de 16 listas ya existen en SharePoint', n === 16 ? 'ok' : 'info');
+    log_('Listas encontradas: ' + Object.keys(existing).filter(function(k){ return ALL_LISTS.indexOf(k)>=0; }).join(', '), 'info');
+  } catch(e) { status_('Error al verificar: ' + e.message, 'err'); log_(e.message, 'err'); }
+}
+
+function renderListGrid(existing) {
+  var g = document.getElementById('listGrid'); g.innerHTML = '';
+  ALL_LISTS.forEach(function(name) {
+    var row = document.createElement('div');
+    row.className = 'list-row' + (existing && existing[name] ? ' done' : '');
+    row.id = 'lr-' + name;
+    row.innerHTML = '<span class="dot"></span><span class="list-name">'
+      + (MASTERS.indexOf(name) >= 0 ? '📋 ' : '📄 ') + name
+      + '</span><span class="list-status">'
+      + (existing && existing[name] ? 'existente' : '—') + '</span>';
+    g.appendChild(row);
+  });
+}
+
+function setListState(name, state, msg) {
+  var row = document.getElementById('lr-' + name);
+  if (!row) return;
+  row.className = 'list-row ' + state;
+  row.querySelector('.list-status').textContent = msg || state;
+}
+
+async function crearListas() {
+  document.getElementById('btnCrear').disabled = true;
+  document.getElementById('btnVerif').disabled = true;
+  renderListGrid({});
+  var prog = document.getElementById('progCrear');
+  var bar  = document.getElementById('progBarCrear');
+  prog.style.display = 'block'; bar.style.width = '0%';
+
+  try {
+    var digest = await getDigest();
+    var existData = await spGet('/lists?$select=Title,Id&$top=300');
+    var existing  = {};
+    (existData.value||[]).forEach(function(l){ existing[l.Title] = l.Id; });
+
+    var done = 0;
+    for (var i = 0; i < ALL_LISTS.length; i++) {
+      var name = ALL_LISTS[i];
+      bar.style.width = Math.round((i / ALL_LISTS.length) * 100) + '%';
+      setListState(name, 'active', 'procesando…');
+
+      if (existing[name]) {
+        _listIds[name] = existing[name];
+        setListState(name, 'done', 'ya existía');
+        log_('Omitida (ya existe): ' + name, 'warn');
+        done++; continue;
+      }
+
+      try {
+        var lData = await spPost('/lists', {
+          Title: name,
+          BaseTemplate: 100,
+          ContentTypesEnabled: false
+        }, digest);
+        var lid = lData.Id ? lData.Id.StringValue || lData.Id : lData.d && lData.d.Id;
+        if (!lid) lid = lData.value;
+        _listIds[name] = lid;
+
+        // crear campos (omitimos Title, ya existe)
+        var fields = LIST_SCHEMA[name] || [];
+        for (var j = 0; j < fields.length; j++) {
+          var f = fields[j];
+          if (f.n === 'Title') continue;
+          try {
+            await spPost('/lists/GetByTitle(\'' + name + '\')/fields', buildFieldXml(f), digest);
+            await delay(80);
+          } catch(fe) {
+            log_('Campo ' + f.n + ' en ' + name + ': ' + fe.message, 'warn');
+          }
+        }
+        setListState(name, 'done', 'creada');
+        log_('Creada: ' + name, 'ok');
+        done++;
+      } catch(le) {
+        setListState(name, 'err', 'error');
+        log_('Error creando ' + name + ': ' + le.message, 'err');
+      }
+      await delay(300);
+    }
+
+    bar.style.width = '100%';
+    document.getElementById('cntCreadas').textContent = done;
+    status_(done + ' de 16 listas procesadas', done === ALL_LISTS.length ? 'ok' : 'info');
+  } catch(e) {
+    status_('Error: ' + e.message, 'err'); log_(e.message, 'err');
+  } finally {
+    document.getElementById('btnCrear').disabled = false;
+    document.getElementById('btnVerif').disabled = false;
+  }
+}
+
+// ============================================================
+// POBLAR MAESTROS
+// ============================================================
+function onFileSelected(input) {
+  if (!input.files || !input.files[0]) return;
+  var file = input.files[0];
+  document.getElementById('fileLabel').textContent = file.name;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      _jsonData = JSON.parse(e.target.result);
+      log_('JSON cargado: ' + Object.keys(_jsonData).map(function(k){return k+'('+_jsonData[k].length+')'}).join(', '), 'ok');
+      document.getElementById('btnPoblar').disabled = false;
+    } catch(err) {
+      status_('JSON inválido: ' + err.message, 'err'); _jsonData = null;
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+// Lee los campos de una lista y devuelve mapa displayName->staticName
+async function getFieldMap(listName) {
+  // Traemos TODOS los campos sin filtrar hidden/readonly
+  var data = await spGet('/lists/GetByTitle(\'' + listName + '\')/fields?$select=Title,StaticName,InternalName&$top=300');
+  var map = {};
+  (data.value||[]).forEach(function(f){
+    // Mapeamos por Title (displayName) -> StaticName
+    if (f.Title && f.StaticName) map[f.Title] = f.StaticName;
+    // También por InternalName por si acaso
+    if (f.InternalName && f.StaticName) map[f.InternalName] = f.StaticName;
+  });
+  return map;
+}
+
+// Traduce un objeto de datos usando el mapa displayName->staticName
+function translateFields(row, fieldMap) {
+  var out = {};
+  Object.keys(row).forEach(function(k) {
+    if (row[k] === null || row[k] === undefined) return;
+    var staticName = fieldMap[k];
+    if (staticName) {
+      out[staticName] = row[k];
+    }
+    // Si no está en el mapa lo omitimos (SP rechaza campos desconocidos)
+  });
+  return out;
+}
+
+async function poblarMaestros() {
+  if (!_jsonData) { status_('Selecciona un JSON primero', 'err'); return; }
+  document.getElementById('btnPoblar').disabled = true;
+  var prog = document.getElementById('progPoblar');
+  var bar  = document.getElementById('progBarPoblar');
+  prog.style.display = 'block'; bar.style.width = '0%';
+
+  var grid = document.getElementById('poblarGrid'); grid.innerHTML = '';
+  var lists = Object.keys(_jsonData).filter(function(k){ return LIST_KEY[k]; });
+
+  try {
+    var digest = await getDigest();
+    var totalRegistros = 0;
+
+    for (var li = 0; li < lists.length; li++) {
+      var name = lists[li];
+      var rows = _jsonData[name];
+      var key  = LIST_KEY[name];
+      bar.style.width = Math.round((li / lists.length) * 100) + '%';
+
+      var row = document.createElement('div');
+      row.className = 'list-row active';
+      row.id = 'pr-' + name;
+      row.innerHTML = '<span class="dot"></span><span class="list-name">📋 ' + name + '</span>'
+        + '<span class="list-status">leyendo schema…</span>';
+      grid.appendChild(row);
+
+      try {
+        // 1. Leer schema real de SP para esta lista
+        var fieldMap = await getFieldMap(name);
+        var staticKey = fieldMap[key] || key;
+        // Log detallado del schema para diagnóstico
+        var mapEntries = Object.keys(fieldMap).map(function(k){ return k+'->'+fieldMap[k]; });
+        log_('Schema ' + name + ' (' + mapEntries.length + ' campos): ' + mapEntries.join(', '), 'info');
+        if (Object.keys(fieldMap).length === 0) {
+          log_('AVISO: schema vacío para ' + name + ' — posible problema de permisos al leer campos', 'warn');
+        }
+
+        // 2. Obtener claves ya presentes usando el staticName real
+        var ya = new Set();
+        var fetchUrl = '/lists/GetByTitle(\'' + name + '\')/items?$select=' + staticKey + '&$top=5000';
+        var eData = await spGet(fetchUrl);
+        (eData.value||[]).forEach(function(it){
+          var v = it[staticKey] || it[key];
+          if (v) ya.add(String(v));
+        });
+        row.querySelector('.list-status').textContent = 'cargando…';
+
+        var nuevos = 0, errores = 0;
+        for (var ri = 0; ri < rows.length; ri++) {
+          var r = rows[ri];
+          var k = r[key] ? String(r[key]) : '';
+          if (k && ya.has(k)) continue;
+          // Traducir nombres de campo a staticNames reales
+          var fields = translateFields(r, fieldMap);
+          try {
+            await spPost('/lists/GetByTitle(\'' + name + '\')/items', fields, digest);
+            nuevos++; ya.add(k);
+          } catch(ie) {
+            errores++;
+            log_('Item error en ' + name + '[' + k + ']: ' + ie.message, 'err');
+          }
+          if (ri % 10 === 0) await delay(50);
+        }
+        row.className = errores > 0 ? 'list-row err' : 'list-row done';
+        row.querySelector('.list-status').textContent = '+' + nuevos + (errores > 0 ? ' ('+errores+' errores)' : '');
+        log_(name + ': +' + nuevos + ' nuevos, ' + ya.size + ' en total', 'ok');
+        totalRegistros += nuevos;
+      } catch(le) {
+        row.className = 'list-row err';
+        row.querySelector('.list-status').textContent = 'error';
+        log_('Error poblando ' + name + ': ' + le.message, 'err');
+      }
+      await delay(200);
+    }
+
+    bar.style.width = '100%';
+    document.getElementById('cntRegistros').textContent = totalRegistros;
+    status_(totalRegistros + ' registros cargados', 'ok');
+  } catch(e) {
+    status_('Error: ' + e.message, 'err'); log_(e.message, 'err');
+  } finally {
+    document.getElementById('btnPoblar').disabled = false;
+  }
+}
+
+// ============================================================
+// UI HELPERS
+// ============================================================
+function status_(msg, cls) {
+  var el = document.getElementById('statusBar');
+  if (!msg) { el.style.display = 'none'; return; }
+  el.textContent = msg; el.className = cls; el.style.display = 'block';
+}
+
+function log_(msg, cls) {
+  var el = document.getElementById('log');
+  el.style.display = 'block';
+  var t = new Date().toTimeString().slice(0,8);
+  el.innerHTML += '<span class="log-'+(cls||'info')+'">['+t+'] '+escHtml(msg)+'</span>\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+function toggleLog() {
+  var el = document.getElementById('log');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function delay(ms) { return new Promise(function(r){ setTimeout(r, ms); }); }
+
+// ============================================================
+// INIT
+// ============================================================
+window.addEventListener('load', async function() {
+  var btn = document.getElementById('btnLogin');
+  try {
+    _cfg = await loadConfig();
+    initMsal(_cfg);
+    if (typeof _msal.initialize === 'function') await _msal.initialize();
+    var ac = _msal.getAllAccounts();
+    if (ac.length) {
+      try {
+        var r = await _msal.acquireTokenSilent({ scopes: getScopes(), account: ac[0] });
+        setUser(r.account);
+        status_('Sesión activa: ' + r.account.username, 'ok');
+        habilitarBotones(true);
+        return;
+      } catch(e) { /* token caducado */ }
+    }
+    btn.textContent = 'Iniciar sesión'; btn.disabled = false;
+  } catch(e) {
+    status_('Error al inicializar: ' + e.message, 'err');
+    btn.textContent = 'Error (ver status)';
+  }
+});
+</script>
+</body>
+</html>
