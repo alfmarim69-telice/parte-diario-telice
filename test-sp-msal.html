@@ -465,13 +465,15 @@ function onFileSelected(input) {
 
 // Lee los campos de una lista y devuelve mapa displayName->staticName
 async function getFieldMap(listName) {
-  var data = await spGet('/lists/GetByTitle(\'' + listName + '\')/fields?$select=Title,StaticName,Hidden,ReadOnlyField&$top=200');
+  // Traemos TODOS los campos sin filtrar hidden/readonly
+  var data = await spGet('/lists/GetByTitle(\'' + listName + '\')/fields?$select=Title,StaticName,InternalName&$top=300');
   var map = {};
   (data.value||[]).forEach(function(f){
-    if (!f.Hidden && !f.ReadOnlyField) map[f.Title] = f.StaticName;
+    // Mapeamos por Title (displayName) -> StaticName
+    if (f.Title && f.StaticName) map[f.Title] = f.StaticName;
+    // También por InternalName por si acaso
+    if (f.InternalName && f.StaticName) map[f.InternalName] = f.StaticName;
   });
-  // siempre incluir Title aunque sea readonly (lo necesitamos para claves)
-  (data.value||[]).forEach(function(f){ if (f.Title==='Title') map['Title']=f.StaticName; });
   return map;
 }
 
@@ -480,8 +482,11 @@ function translateFields(row, fieldMap) {
   var out = {};
   Object.keys(row).forEach(function(k) {
     if (row[k] === null || row[k] === undefined) return;
-    var staticName = fieldMap[k] || k; // si no está en el mapa, intentar tal cual
-    out[staticName] = row[k];
+    var staticName = fieldMap[k];
+    if (staticName) {
+      out[staticName] = row[k];
+    }
+    // Si no está en el mapa lo omitimos (SP rechaza campos desconocidos)
   });
   return out;
 }
@@ -517,7 +522,12 @@ async function poblarMaestros() {
         // 1. Leer schema real de SP para esta lista
         var fieldMap = await getFieldMap(name);
         var staticKey = fieldMap[key] || key;
-        log_('Schema ' + name + ': ' + JSON.stringify(fieldMap), 'info');
+        // Log detallado del schema para diagnóstico
+        var mapEntries = Object.keys(fieldMap).map(function(k){ return k+'->'+fieldMap[k]; });
+        log_('Schema ' + name + ' (' + mapEntries.length + ' campos): ' + mapEntries.join(', '), 'info');
+        if (Object.keys(fieldMap).length === 0) {
+          log_('AVISO: schema vacío para ' + name + ' — posible problema de permisos al leer campos', 'warn');
+        }
 
         // 2. Obtener claves ya presentes usando el staticName real
         var ya = new Set();
