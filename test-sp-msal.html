@@ -109,6 +109,7 @@ button:not(:disabled):hover{opacity:.85}
     <div class="btns">
       <button class="btn-success" id="btnCrear" onclick="crearListas()" disabled>Crear las 16 listas</button>
       <button class="btn-neutral" onclick="verificarListas()" id="btnVerif" disabled>Verificar existentes</button>
+      <button class="btn-danger" onclick="borrarListas()" id="btnBorrar" disabled>⚠ Borrar las 16 listas</button>
     </div>
     <div class="progress-wrap" id="progCrear"><div class="progress-bar" id="progBarCrear"></div></div>
     <div class="list-grid" id="listGrid" style="margin-top:12px"></div>
@@ -205,8 +206,39 @@ async function getToken() {
   catch(e) { return (await _msal.acquireTokenPopup({ scopes: getScopes() })).accessToken; }
 }
 
+async function borrarListas() {
+  if (!confirm('¿Seguro? Se borrarán las 16 listas y todos sus datos.')) return;
+  document.getElementById('btnBorrar').disabled = true;
+  var digest = await getDigest();
+  var ya = await existing(_token_cache || await getTokenAndCache(), await getSiteId());
+  // versión simplificada: usar spPost con DELETE
+  var tok = await getToken();
+  var deleted = 0, errors = 0;
+  for (var i = 0; i < ALL_LISTS.length; i++) {
+    var name = ALL_LISTS[i];
+    var lid = (await spGet('/lists/GetByTitle(\'' + name + '\')?$select=Id')).Id;
+    if (!lid) { log_('No existe: ' + name, 'warn'); continue; }
+    try {
+      var r = await fetch(_cfg.siteUrl.replace(/\/$/, '') + '/_api/web/lists(guid\'' + lid + '\')', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + await getToken(),
+          'X-RequestDigest': digest,
+          'X-HTTP-Method': 'DELETE',
+          'IF-MATCH': '*'
+        }
+      });
+      if (r.ok || r.status === 204) { log_('Borrada: ' + name, 'ok'); deleted++; }
+      else { log_('Error borrando ' + name + ': ' + r.status, 'err'); errors++; }
+    } catch(e) { log_('Error: ' + name + ' ' + e.message, 'err'); errors++; }
+    await new Promise(function(r){ setTimeout(r, 300); });
+  }
+  status_(deleted + ' listas borradas' + (errors > 0 ? ', ' + errors + ' errores' : ''), errors > 0 ? 'err' : 'ok');
+  document.getElementById('btnBorrar').disabled = false;
+}
+
 function habilitarBotones(on) {
-  ['btnCrear','btnVerif'].forEach(function(id){ document.getElementById(id).disabled = !on; });
+  ['btnCrear','btnVerif','btnBorrar'].forEach(function(id){ document.getElementById(id).disabled = !on; });
   if (!on) document.getElementById('btnPoblar').disabled = true;
   else if (_jsonData) document.getElementById('btnPoblar').disabled = false;
 }
@@ -223,25 +255,25 @@ var ALL_LISTS = MASTERS.concat(SYNC);
 var LIST_SCHEMA = {
   M_Proyectos:      [{n:'Codigo',t:'T'},{n:'Nombre',t:'T'},{n:'Tipo',t:'T'},{n:'Incentivos',t:'T'}],
   M_Partidas:       [{n:'Clave',t:'T'},{n:'Proyecto',t:'T'},{n:'Cod',t:'T'},{n:'Descripcion',t:'N'},
-                     {n:'Ud',t:'T'},{n:'Pu',t:'CUR'},{n:'CosteUd',t:'CUR'},{n:'Te',t:'T'},
-                     {n:'Ts',t:'T'},{n:'Ti',t:'T'},{n:'To',t:'T'},{n:'Grupo',t:'T'},
+                     {n:'Unidad',t:'T'},{n:'PrecioUd',t:'CUR'},{n:'CosteUd',t:'CUR'},{n:'TaskEjec',t:'T'},
+                     {n:'TaskSum',t:'T'},{n:'TaskIng',t:'T'},{n:'TaskOtros',t:'T'},{n:'Grupo',t:'T'},
                      {n:'TipoGrupo',t:'CH',o:['EJEC','SUM','ING','OTROS']}],
   M_PartidasCert:   [{n:'Clave',t:'T'},{n:'Proyecto',t:'T'},{n:'Cod',t:'T'},{n:'Descripcion',t:'N'},
-                     {n:'Ud',t:'T'},{n:'Medicion',t:'NUM'},{n:'Pu',t:'CUR'},{n:'VentaPpto',t:'CUR'},
-                     {n:'CosteUd',t:'CUR'},{n:'Capitulo',t:'T'},{n:'Te',t:'T'},{n:'Ts',t:'T'},
-                     {n:'Ti',t:'T'},{n:'To',t:'T'}],
+                     {n:'Unidad',t:'T'},{n:'Medicion',t:'NUM'},{n:'PrecioUd',t:'CUR'},{n:'VentaPpto',t:'CUR'},
+                     {n:'CosteUd',t:'CUR'},{n:'Capitulo',t:'T'},{n:'TaskEjec',t:'T'},{n:'TaskSum',t:'T'},
+                     {n:'TaskIng',t:'T'},{n:'TaskOtros',t:'T'}],
   M_PartidasPpto:   [{n:'Clave',t:'T'},{n:'Proyecto',t:'T'},{n:'Cod',t:'T'},{n:'Descripcion',t:'N'},
-                     {n:'Ud',t:'T'},{n:'Medicion',t:'NUM'},{n:'PuEc',t:'CUR'},{n:'CosteUd',t:'CUR'},
-                     {n:'VentaPpto',t:'CUR'},{n:'CosteTotalPpto',t:'CUR'},{n:'Te',t:'T'},
-                     {n:'Ts',t:'T'},{n:'Ti',t:'T'},{n:'To',t:'T'}],
+                     {n:'Unidad',t:'T'},{n:'Medicion',t:'NUM'},{n:'PuEc',t:'CUR'},{n:'CosteUd',t:'CUR'},
+                     {n:'VentaPpto',t:'CUR'},{n:'CosteTotalPpto',t:'CUR'},{n:'TaskEjec',t:'T'},
+                     {n:'TaskSum',t:'T'},{n:'TaskIng',t:'T'},{n:'TaskOtros',t:'T'}],
   M_Personal:       [{n:'Clave',t:'T'},{n:'Proyecto',t:'T'},{n:'Num',t:'T'},{n:'Nombre',t:'T'},
                      {n:'Categoria',t:'T'},{n:'Tipo',t:'CH',o:['ENC','MOD','EXT']},
-                     {n:'CosteHora',t:'CUR'},{n:'DietaCompleta',t:'CUR'},{n:'MediaDieta',t:'CUR'},{n:'Km',t:'NUM'}],
+                     {n:'CosteHora',t:'CUR'},{n:'DietaCompleta',t:'CUR'},{n:'MediaDieta',t:'CUR'},{n:'KmDieta',t:'NUM'}],
   M_Materiales:     [{n:'Clave',t:'T'},{n:'Proyecto',t:'T'},{n:'Cod',t:'T'},{n:'Descripcion',t:'N'},
-                     {n:'Ud',t:'T'},{n:'Pu',t:'CUR'},{n:'CosteUd',t:'CUR'},{n:'Te',t:'T'},
-                     {n:'Ts',t:'T'},{n:'Grupo',t:'T'}],
+                     {n:'Unidad',t:'T'},{n:'PrecioUd',t:'CUR'},{n:'CosteUd',t:'CUR'},{n:'TaskEjec',t:'T'},
+                     {n:'TaskSum',t:'T'},{n:'Grupo',t:'T'}],
   M_Subcontratas:   [{n:'Clave',t:'T'},{n:'Proyecto',t:'T'},{n:'Task',t:'T'},{n:'Cod',t:'T'},
-                     {n:'Descripcion',t:'N'},{n:'Ud',t:'T'},{n:'CosteEstudio',t:'CUR'},
+                     {n:'Descripcion',t:'N'},{n:'Unidad',t:'T'},{n:'CosteEstudio',t:'CUR'},
                      {n:'Tarifa',t:'CUR'},{n:'Empresa',t:'T'},{n:'Contrato',t:'T'}],
   Partes:           [{n:'ParteId',t:'T'},{n:'Proyecto',t:'T'},{n:'Fecha',t:'T'},{n:'Semana',t:'T'},
                      {n:'Estado',t:'CH',o:['borrador','pendiente_costes','validado','devuelto']},
@@ -251,19 +283,19 @@ var LIST_SCHEMA = {
                      {n:'Observaciones',t:'N'},{n:'RolOrigen',t:'T'},{n:'Guardado',t:'T'},{n:'Enviado',t:'B'}],
   PartePersonal:    [{n:'LineaId',t:'T'},{n:'ParteId',t:'T'},{n:'Num',t:'T'},{n:'Nombre',t:'T'},
                      {n:'Horas',t:'NUM'},{n:'Dieta',t:'T'},{n:'CosteDieta',t:'CUR'},{n:'Pernocta',t:'B'},
-                     {n:'Km',t:'NUM'},{n:'Tipo',t:'T'},{n:'CosteHora',t:'CUR'},{n:'CosteMod',t:'CUR'}],
+                     {n:'KmDieta',t:'NUM'},{n:'Tipo',t:'T'},{n:'CosteHora',t:'CUR'},{n:'CosteMod',t:'CUR'}],
   ParteMaquinaria:  [{n:'LineaId',t:'T'},{n:'ParteId',t:'T'},{n:'Cod',t:'T'},{n:'Descripcion',t:'N'},
                      {n:'Horas',t:'NUM'},{n:'Unidad',t:'T'},{n:'Tarifa',t:'CUR'},{n:'CosteMaq',t:'CUR'}],
   ParteMateriales:  [{n:'LineaId',t:'T'},{n:'ParteId',t:'T'},{n:'Cod',t:'T'},{n:'Descripcion',t:'N'},
-                     {n:'Ud',t:'T'},{n:'Cant',t:'NUM'},{n:'CosteUd',t:'CUR'},{n:'CosteTotal',t:'CUR'},
+                     {n:'Unidad',t:'T'},{n:'Cant',t:'NUM'},{n:'CosteUd',t:'CUR'},{n:'CosteTotal',t:'CUR'},
                      {n:'TaskSum',t:'T'},{n:'TaskEjec',t:'T'},{n:'Albaran',t:'T'}],
   ParteSubcontratas:[{n:'LineaId',t:'T'},{n:'ParteId',t:'T'},{n:'Cod',t:'T'},{n:'Descripcion',t:'N'},
-                     {n:'Ud',t:'T'},{n:'Cant',t:'NUM'},{n:'Tarifa',t:'CUR'},{n:'CosteTotal',t:'CUR'},
+                     {n:'Unidad',t:'T'},{n:'Cant',t:'NUM'},{n:'Tarifa',t:'CUR'},{n:'CosteTotal',t:'CUR'},
                      {n:'CosteEstudio',t:'CUR'},{n:'Empresa',t:'T'},{n:'Contrato',t:'T'}],
   ParteOtros:       [{n:'LineaId',t:'T'},{n:'ParteId',t:'T'},{n:'Cod',t:'T'},{n:'Concepto',t:'N'},
                      {n:'Categoria',t:'T'},{n:'Importe',t:'CUR'}],
   ParteProduccion:  [{n:'LineaId',t:'T'},{n:'ParteId',t:'T'},{n:'PartidaCod',t:'T'},{n:'PartidaDesc',t:'N'},
-                     {n:'Ud',t:'T'},{n:'Pu',t:'CUR'},{n:'Cant',t:'NUM'},{n:'Importe',t:'CUR'},
+                     {n:'Unidad',t:'T'},{n:'PrecioUd',t:'CUR'},{n:'Cant',t:'NUM'},{n:'Importe',t:'CUR'},
                      {n:'TaskEjec',t:'T'},{n:'TaskSum',t:'T'},{n:'Capitulo',t:'T'},
                      {n:'PkIni',t:'T'},{n:'PkFin',t:'T'}],
   ParteCostes:      [{n:'LineaId',t:'T'},{n:'ParteId',t:'T'},{n:'TaskCod',t:'T'},{n:'TaskDesc',t:'N'},
