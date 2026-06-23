@@ -20,6 +20,17 @@
 /* ---------- CONFIG + MSAL (patrón idéntico al admin-listas.html) ---------- */
 var _cfg = null, _msal = null;
 
+/* redirectUri: debe ser una URL YA REGISTRADA en Entra, del mismo origen y
+   que cargue (200). Usamos la carpeta del repo (la sirve GitHub Pages como
+   index.html, que es el redirect registrado), NO la página actual.
+   Si el redirect registrado fuese exactamente ".../index.html", cambia
+   REDIRECT_URI por esa cadena. */
+function carpetaActual() {
+  var base = window.location.pathname.replace(/\/[^/]*$/, '/'); // quita el fichero
+  return window.location.origin + base;                         // .../parte-diario-telice/
+}
+var REDIRECT_URI = carpetaActual();
+
 async function loadConfig() {
   var base = window.location.pathname.replace(/\/[^/]*$/, '/');
   var url  = window.location.origin + base + 'config.json';
@@ -34,7 +45,7 @@ function initMsal(cfg) {
   _msal = new msal.PublicClientApplication({
     auth: { clientId: cfg.clientId,
             authority: 'https://login.microsoftonline.com/' + cfg.tenantId,
-            redirectUri: window.location.origin + window.location.pathname },
+            redirectUri: REDIRECT_URI },
     cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
   });
 }
@@ -82,8 +93,7 @@ async function spGet(path) {
   return r.json();
 }
 
-// Lee TODOS los items de una lista paginando ($top + @odata.nextLink no aplica
-// con nometadata, usamos __next si llegara; con $top 5000 sobra para los maestros).
+// Lee TODOS los items de una lista ($top 5000 sobra para los maestros).
 async function spReadAll(listTitle) {
   var out = [];
   var path = "/lists/GetByTitle('" + listTitle + "')/items?$top=5000";
@@ -147,7 +157,6 @@ function num(v) {
 }
 
 // Mapea una fila cruda de SP -> objeto con los campos de la app.
-// Devuelve { _proyecto, ...campos } para que el llamador la coloque.
 function mapRow(raw, schema) {
   var o = {};
   var cols = schema.cols;
@@ -173,7 +182,6 @@ function nuevaObra(cab) {
 }
 
 // Lee todos los maestros y construye el objeto OBRAS completo.
-// onProgress(msg) opcional para feedback en UI.
 async function construirObras(onProgress) {
   await ensureReady();
   var log = onProgress || function(){};
@@ -204,7 +212,7 @@ async function construirObras(onProgress) {
       var cod  = item._proyecto;
       delete item._proyecto;
       var obra = OBRAS[cod];
-      if (!obra) { huerfanas++; return; }   // fila sin obra registrada -> se ignora
+      if (!obra) { huerfanas++; return; }
       obra[sch.target].push(item);
     });
     log('  ' + name + ': ' + rows.length + ' filas' + (huerfanas ? ' (' + huerfanas + ' sin obra, ignoradas)' : ''));
@@ -213,9 +221,7 @@ async function construirObras(onProgress) {
 }
 
 /* ---------- APLICAR a la app ----------
-   OBRAS en index.html es 'const': no se puede reasignar, así que mutamos
-   el objeto in situ (vaciar claves + copiar nuevas) y cualquier referencia
-   o closure existente sigue siendo válida. */
+   OBRAS en index.html es 'const': mutamos el objeto in situ. */
 function aplicarObras(destino, nuevas) {
   Object.keys(destino).forEach(function (k) { delete destino[k]; });
   Object.keys(nuevas).forEach(function (k) { destino[k] = nuevas[k]; });
@@ -229,7 +235,6 @@ global.SPTelice = {
   currentAccount: currentAccount,
   construirObras: construirObras,
   aplicarObras: aplicarObras,
-  // utilidades expuestas por si se necesitan desde la app/depuración:
   spGet: spGet,
   SP_SCHEMA: SP_SCHEMA
 };
