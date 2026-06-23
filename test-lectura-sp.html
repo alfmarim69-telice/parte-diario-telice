@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test lectura SharePoint · Parte Diario Telice</title>
+<style>
+  body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#f4f6f9;color:#1a2230}
+  header{background:#1a3a5c;color:#fff;padding:14px 18px;font-weight:700;letter-spacing:.04em}
+  main{max-width:1000px;margin:0 auto;padding:18px}
+  .card{background:#fff;border:1px solid #e4e8ee;border-radius:10px;padding:16px;margin-bottom:14px}
+  button{background:#1a3a5c;color:#fff;border:0;border-radius:7px;padding:10px 16px;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .badge{display:inline-block;background:#e8f0f8;color:#1a3a5c;border-radius:6px;padding:4px 10px;font-size:13px;margin-left:8px}
+  pre{background:#0f1722;color:#d6e2f0;padding:12px;border-radius:8px;overflow:auto;font-size:12px;line-height:1.45;max-height:60vh}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin-top:6px}
+  th,td{border:1px solid #e4e8ee;padding:6px 8px;text-align:left}
+  th{background:#f0f3f7}
+  .ok{color:#137a3a}.err{color:#b3261e}.muted{color:#667}
+  .note{font-size:13px;background:#fff7e6;border:1px solid #f0d999;border-radius:8px;padding:10px;margin-bottom:14px}
+</style>
+</head>
+<body>
+<header>Test de lectura SharePoint → OBRAS</header>
+<main>
+
+  <div class="note">
+    Esta página usa <code>redirectUri = su propia URL</code>. Si al iniciar sesión sale un error
+    <code>AADSTS50011 (redirect mismatch)</code>, añade esta URL como <b>Redirect URI (tipo SPA)</b>
+    en la app de Entra «Test Partes Trabajo Alfredo», o prueba la lógica directamente desde
+    <code>index.html</code> (cuya URL ya está registrada).
+  </div>
+
+  <div class="card">
+    <button id="btnLogin">Iniciar sesión</button>
+    <button id="btnLeer" disabled>Leer maestros y verificar</button>
+    <span id="user" class="badge" style="display:none"></span>
+  </div>
+
+  <div class="card">
+    <div style="font-weight:700;margin-bottom:6px">Estado</div>
+    <div id="estado" class="muted">Pendiente de iniciar sesión.</div>
+  </div>
+
+  <div class="card" id="resumenCard" style="display:none">
+    <div style="font-weight:700;margin-bottom:6px">Recuento por obra y lista</div>
+    <div id="resumen"></div>
+  </div>
+
+  <div class="card" id="muestraCard" style="display:none">
+    <div style="font-weight:700;margin-bottom:6px">Fila de ejemplo mapeada (verificar que field_N cae en el campo correcto)</div>
+    <div id="muestra"></div>
+  </div>
+
+  <div class="card" id="jsonCard" style="display:none">
+    <div style="font-weight:700;margin-bottom:6px">OBRAS construido (JSON)</div>
+    <pre id="json"></pre>
+  </div>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2/lib/msal-browser.js"
+  onerror="this.onerror=null;this.src='https://unpkg.com/@azure/msal-browser@2/lib/msal-browser.js'"></script>
+<script src="sp-integracion.js"></script>
+<script>
+var estado = document.getElementById('estado');
+function setEstado(t, cls){ estado.textContent = t; estado.className = cls || 'muted'; }
+
+document.getElementById('btnLogin').onclick = async function(){
+  try {
+    setEstado('Abriendo login…');
+    var acc = await SPTelice.login();
+    var u = document.getElementById('user');
+    u.textContent = acc.name; u.style.display = 'inline-block';
+    document.getElementById('btnLeer').disabled = false;
+    setEstado('Sesión iniciada. Ya puedes leer los maestros.', 'ok');
+  } catch(e){ setEstado('Error de login: ' + e.message, 'err'); }
+};
+
+document.getElementById('btnLeer').onclick = async function(){
+  this.disabled = true;
+  try {
+    var OBRAS = await SPTelice.construirObras(function(m){ setEstado(m); });
+    setEstado('Lectura completada.', 'ok');
+    pintarResumen(OBRAS);
+    pintarMuestra(OBRAS);
+    document.getElementById('jsonCard').style.display = '';
+    document.getElementById('json').textContent = JSON.stringify(OBRAS, null, 1);
+  } catch(e){ setEstado('Error leyendo: ' + e.message, 'err'); }
+  this.disabled = false;
+};
+
+var LISTAS_ARR = ['partidas','partidas_cert','partidas_ppto','personal','mat','sub'];
+
+function pintarResumen(OBRAS){
+  var cod = Object.keys(OBRAS);
+  var h = '<table><tr><th>Lista</th>' + cod.map(function(c){ return '<th>'+c+'</th>'; }).join('') + '</tr>';
+  LISTAS_ARR.forEach(function(L){
+    h += '<tr><td>'+L+'</td>' + cod.map(function(c){
+      return '<td>'+ (OBRAS[c][L] ? OBRAS[c][L].length : 0) +'</td>';
+    }).join('') + '</tr>';
+  });
+  h += '</table>';
+  document.getElementById('resumen').innerHTML = h;
+  document.getElementById('resumenCard').style.display = '';
+}
+
+function pintarMuestra(OBRAS){
+  var cod = Object.keys(OBRAS)[0];
+  if (!cod){ return; }
+  var obra = OBRAS[cod];
+  var h = '<div class="muted" style="margin-bottom:8px">Obra de muestra: <b>'+cod+'</b> · cabecera: '
+        + JSON.stringify({nombre:obra.nombre,tipo:obra.tipo,incentivos:obra.incentivos}) + '</div>';
+  LISTAS_ARR.forEach(function(L){
+    var row = obra[L] && obra[L][0];
+    h += '<div style="margin:8px 0 2px;font-weight:600">'+L+'</div>';
+    h += row ? '<pre style="max-height:none">'+JSON.stringify(row)+'</pre>'
+             : '<div class="muted">(sin filas)</div>';
+  });
+  document.getElementById('muestra').innerHTML = h;
+  document.getElementById('muestraCard').style.display = '';
+}
+</script>
+</body>
+</html>
