@@ -153,7 +153,7 @@ function mapRow(raw, schema) {
   return o;
 }
 
-// ¿Fila vacía? (sin Clave ni Codigo/Codigo*; descarta filas de prueba en blanco)
+// ¿Fila vacía? (sin Clave; descarta filas de prueba en blanco)
 function filaVacia(o) {
   var clave = o.Clave;
   return clave === null || clave === undefined || String(clave).trim() === '';
