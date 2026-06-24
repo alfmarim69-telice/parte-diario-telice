@@ -103,8 +103,8 @@ var SP_SCHEMA = {
     num:['CosteHora','CosteDia'] },
   // --- Por obra (Proyecto en field_1) ---
   M_Partidas: { target:'partidas', proyecto:true,
-    cols:['Clave','Proyecto','Codigo','Capitulo','Descripcion','Ud','Medicion','PrecioVenta','VentaTotal','CtrlIngenieria','CtrlSuministro','CtrlEjecucion','CtrlOtros'],
-    num:['Medicion','PrecioVenta','VentaTotal'] },
+    cols:['Clave','Proyecto','Codigo','CtrlIngenieria','CtrlSuministro','CtrlEjecucion','CtrlOtros','Capitulo','Ud','Descripcion','Medicion','PrecioVenta','CosteUd','PuVentaIng','CosteUdIng','PuVentaSum','CosteUdSum','PuVentaEje','CosteUdEje','PuVentaOtr','CosteUdOtr'],
+    num:['Medicion','PrecioVenta','CosteUd','PuVentaIng','CosteUdIng','PuVentaSum','CosteUdSum','PuVentaEje','CosteUdEje','PuVentaOtr','CosteUdOtr'] },
   M_PartidasControl: { target:'partidasControl', proyecto:true,
     cols:['Clave','Proyecto','Codigo','Capitulo','Descripcion','Ud','Medicion','CosteUnitario','CosteTotal'],
     num:['Medicion','CosteUnitario','CosteTotal'] },
