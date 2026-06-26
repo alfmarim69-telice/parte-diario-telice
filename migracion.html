@@ -216,7 +216,7 @@ async function poblarLista(lista, cols, numset, rows){
     const body={};
     for(let i=0;i<cols.length;i++){
       const nombre=cols[i];
-      const internal = fm[nombre] || (i===0?'Title':'field_'+i);
+      const internal = (i===0) ? 'Title' : (fm[nombre] || ('field_'+i));
       let val=row[nombre];
       if(numset.includes(nombre)) val=(typeof val==='number'?val:Number(val)||0);
       body[internal]=val;
