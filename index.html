@@ -1839,6 +1839,26 @@ function cargarObra(cod) {
     poblarSelectOtros && poblarSelectOtros();
   }
   if (window.activarBuscadores) activarBuscadores();
+
+  // Refrescar todas las vistas para que reflejen la obra recién cargada.
+  // Sin esto, las tablas (producción, costes, control/informe) seguirían
+  // mostrando los datos de la obra anterior aunque los arrays ya cambiaron.
+  try {
+    typeof renderPersonal === 'function'     && renderPersonal();
+    typeof renderMaquinaria === 'function'   && renderMaquinaria();
+    typeof renderAlquileres === 'function'   && renderAlquileres();
+    typeof renderMOExterna === 'function'    && renderMOExterna();
+    typeof renderMateriales === 'function'   && renderMateriales();
+    typeof renderSubcontratas === 'function' && renderSubcontratas();
+    typeof renderOtros === 'function'        && renderOtros();
+    typeof renderIndirectos === 'function'   && renderIndirectos();
+    typeof renderProduccion === 'function'   && renderProduccion();
+    typeof renderCostes === 'function'       && renderCostes();
+    typeof renderAlmacen === 'function'      && renderAlmacen();
+    typeof renderInforme === 'function'      && renderInforme();
+    typeof actualizarBadges === 'function'   && actualizarBadges();
+    typeof actualizarPctBar === 'function'   && actualizarPctBar();
+  } catch (e) { console.warn('Refresco de vistas tras cargarObra:', e && e.message); }
 }
 
 // ── CARGA DE DATOS: SharePoint con fallback offline ───────────────────────────
