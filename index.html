@@ -1765,6 +1765,9 @@ function poblarSelectPartidas() {
   // PRODUCCIÓN / CERTIFICACIÓN: solo partidas originales de contrato (TABLA DE VENTA-COSTES)
   // No se puede certificar sobre partidas desglosadas — al cliente se certifica en este formato.
   const sel = document.getElementById('prod_partida');
+  if (!sel) return;
+  // Vaciar y dejar solo la opción por defecto, para no acumular al cambiar de obra
+  sel.innerHTML = '<option value="">— Seleccionar partida —</option>';
   // Agrupar por capítulo de obra (campo cap)
   const grupos = {};
   PARTIDAS_CERT.forEach((p, idx) => {
@@ -1854,6 +1857,7 @@ function cargarObra(cod) {
   }
   // Repoblar el selector de Tasks (códigos de control de la obra activa)
   if (typeof poblarSelectTasks === 'function') poblarSelectTasks();
+  if (typeof poblarSelectAlquileres === 'function') poblarSelectAlquileres();
   if (window.activarBuscadores) activarBuscadores();
 
   // Refrescar todas las vistas para que reflejen la obra recién cargada.
@@ -1961,6 +1965,8 @@ function toggleForm(id) {
 // ═══════════════════════════════════════════
 function poblarSelectPersonal() {
   const sel = document.getElementById('p_select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Seleccionar de la lista —</option>';
   // Grupos por tipo
   const grupos = { ENC: 'Jefes de equipo y Técnicos', MOD: 'Operarios y Oficiales', MOI: 'Mano de obra indirecta' };
   const porGrupo = {};
@@ -1988,6 +1994,8 @@ function poblarSelectPersonal() {
 
 function poblarSelectMaquinaria() {
   const sel = document.getElementById('m_select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Seleccionar de la lista —</option>';
   const grupos = { MAQ: 'Maquinaria pesada', VEH: 'Vehículos', AUX: 'Medios auxiliares' };
   const porGrupo = {};
   MAQ_MAESTRO.forEach(m => {
@@ -2018,6 +2026,8 @@ function poblarSelectMaquinaria() {
 // ── Al seleccionar persona del desplegable maestro ─────────────
 function poblarSelectMateriales() {
   const sel = document.getElementById('mat_select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Seleccionar material —</option>';
   // Agrupar por Task 2.xx
   const grupos = {};
   MAT_MAESTRO.forEach((m, i) => {
@@ -2203,6 +2213,7 @@ function poblarSelectSubcontratas() {
   // Poblar desplegable de empresas (únicas, con tarifa primero)
   const selEmp = document.getElementById('sub_empresa_sel');
   if (!selEmp) return;
+  selEmp.innerHTML = '<option value="">— Seleccionar subcontrata —</option>';
   const empresas = new Map();
   SUB_MAESTRO.forEach((s, i) => {
     if (s.empresa) {
@@ -2410,6 +2421,7 @@ function renderSubcontratas() {
 function poblarSelectOtros() {
   const sel = document.getElementById('otros_select');
   if (!sel) return;
+  sel.innerHTML = '<option value="">— Seleccionar concepto —</option>';
   const grupos = {};
   OTROS_MAESTRO.forEach((o, i) => {
     if (!grupos[o.cat]) grupos[o.cat] = [];
@@ -2550,6 +2562,7 @@ function recogerConsumoMat() {
 function poblarSelectAlquileres() {
   const sel = document.getElementById('alq_select');
   if (!sel) return;
+  sel.innerHTML = '<option value="">— Seleccionar de la lista (o rellenar a mano) —</option>';
   // Equipos del maestro que NO son propios de Telice
   MAQ_MAESTRO.forEach((m, i) => {
     const prov = (m.prov || '').trim().toLowerCase();
@@ -2736,6 +2749,7 @@ function renderMOExterna() {
 function poblarSelectIndirectos() {
   const sel = document.getElementById('ind_select');
   if (!sel) return;
+  sel.innerHTML = '<option value="">— Seleccionar concepto —</option>';
   const cats = {};
   INDIRECTOS_MAESTRO.forEach((c, i) => {
     if (!cats[c.cat]) cats[c.cat] = [];
