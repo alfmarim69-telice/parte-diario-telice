@@ -931,6 +931,12 @@
         Personal externo contratado por horas (ETT, refuerzos de otras empresas...). Se imputa como mano de obra en Costes.
       </div>
       <div id="listaMOExterna" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;"></div>
+      <div class="field" style="margin-bottom:8px;">
+        <label>Seleccionar perfil de la lista</label>
+        <select id="moe_select" onchange="onMOESelect()">
+          <option value="">— Seleccionar perfil externo (o rellenar a mano) —</option>
+        </select>
+      </div>
       <button class="add-btn" onclick="toggleForm('formMOExterna')">＋ Añadir trabajador externo</button>
       <div class="add-form" id="formMOExterna">
         <div class="field-grid" style="margin-bottom:8px;">
@@ -1858,6 +1864,7 @@ function cargarObra(cod) {
   // Repoblar el selector de Tasks (códigos de control de la obra activa)
   if (typeof poblarSelectTasks === 'function') poblarSelectTasks();
   if (typeof poblarSelectAlquileres === 'function') poblarSelectAlquileres();
+  if (typeof poblarSelectMOExterna === 'function') poblarSelectMOExterna();
   if (window.activarBuscadores) activarBuscadores();
 
   // Refrescar todas las vistas para que reflejen la obra recién cargada.
@@ -1996,29 +2003,27 @@ function poblarSelectMaquinaria() {
   const sel = document.getElementById('m_select');
   if (!sel) return;
   sel.innerHTML = '<option value="">— Seleccionar de la lista —</option>';
-  const grupos = { MAQ: 'Maquinaria pesada', VEH: 'Vehículos', AUX: 'Medios auxiliares' };
+  // Toda la flota de MAQ_MAESTRO es propia de Telice (los alquileres van en su pestaña).
+  // Agrupar por categoría.
   const porGrupo = {};
   MAQ_MAESTRO.forEach(m => {
-    // Solo maquinaria y vehículos PROPIOS de Telice (el resto va en Alquileres)
-    if ((m.prov || '').trim().toLowerCase() !== 'telice') return;
-    const g = m.tipo || 'AUX';
+    const g = m.categoria || 'Sin categoría';
     if (!porGrupo[g]) porGrupo[g] = [];
     porGrupo[g].push(m);
   });
-  Object.entries(grupos).forEach(([tipo, label]) => {
-    if (!porGrupo[tipo]) return;
+  Object.keys(porGrupo).sort().forEach(cat => {
     const grp = document.createElement('optgroup');
-    grp.label = label;
-    porGrupo[tipo].forEach(m => {
+    grp.label = cat;
+    porGrupo[cat].forEach(m => {
       const opt = document.createElement('option');
       opt.value = MAQ_MAESTRO.indexOf(m);
-      const coste = m.ch ? `${m.ch}€/h` : m.cd ? `${m.cd}€/día` : '—';
-      opt.textContent = `${m.cod} · ${m.desc} (${m.prov}) — ${coste}`;
+      const ch = m.coste_hora || 0, cd = m.coste_dia || 0;
+      const coste = ch ? `${ch}€/h` : cd ? `${cd}€/día` : '—';
+      opt.textContent = `${m.cod} · ${m.desc} — ${coste}`;
       grp.appendChild(opt);
     });
     sel.appendChild(grp);
   });
-
 
   if(window.activarBuscadores) activarBuscadores();
 }
@@ -2563,13 +2568,15 @@ function poblarSelectAlquileres() {
   const sel = document.getElementById('alq_select');
   if (!sel) return;
   sel.innerHTML = '<option value="">— Seleccionar de la lista (o rellenar a mano) —</option>';
-  // Equipos del maestro que NO son propios de Telice
-  MAQ_MAESTRO.forEach((m, i) => {
-    const prov = (m.prov || '').trim().toLowerCase();
-    if (prov === 'telice') return;
+  // Alquileres específicos de la obra activa (lista M_Alquileres)
+  const alquileres = (OBRA_ACTIVA && OBRA_ACTIVA.alquileres) ? OBRA_ACTIVA.alquileres : [];
+  alquileres.forEach((a, i) => {
     const opt = document.createElement('option');
     opt.value = i;
-    opt.textContent = `${m.cod} · ${m.desc}${m.prov ? ' ('+m.prov+')' : ''}${m.cd ? ' — '+m.cd+'€/día' : m.ch ? ' — '+m.ch+'€/h' : ''}`;
+    const th = a.TarifaHora || 0, td = a.TarifaDia || 0;
+    const coste = td ? ` — ${td}€/día` : th ? ` — ${th}€/h` : '';
+    const emp = a.Empresa ? ` (${a.Empresa})` : '';
+    opt.textContent = `${a.CodigoRef || ''} · ${a.Descripcion || ''}${emp}${coste}`;
     sel.appendChild(opt);
   });
 
@@ -2579,20 +2586,27 @@ function poblarSelectAlquileres() {
 function onAlqSelect() {
   const idx = document.getElementById('alq_select').value;
   if (idx === '') return;
-  const m = MAQ_MAESTRO[parseInt(idx)];
-  if (!m) return;
-  document.getElementById('alq_cod').value  = m.cod;
-  document.getElementById('alq_desc').value = m.desc;
-  document.getElementById('alq_prov').value = m.prov || '';
+  const alquileres = (OBRA_ACTIVA && OBRA_ACTIVA.alquileres) ? OBRA_ACTIVA.alquileres : [];
+  const a = alquileres[parseInt(idx)];
+  if (!a) return;
+  const th = a.TarifaHora || 0, td = a.TarifaDia || 0;
+  document.getElementById('alq_cod').value  = a.CodigoRef || '';
+  document.getElementById('alq_desc').value = a.Descripcion || '';
+  document.getElementById('alq_prov').value = a.Empresa || '';
   const tipoSel = document.getElementById('alq_tipo');
-  for (let o of tipoSel.options) if (o.value === m.tipo) { o.selected = true; break; }
-  document.getElementById('alq_unidad').value = (m.cd && !m.ch) ? 'dia' : (m.ch && !m.cd) ? 'hora' : 'dia';
+  if (tipoSel) for (let o of tipoSel.options) if (o.value === a.Categoria) { o.selected = true; break; }
+  document.getElementById('alq_unidad').value = (td && !th) ? 'dia' : (th && !td) ? 'hora' : 'dia';
+  // Prefijar tarifa según unidad
+  const tarifaEl = document.getElementById('alq_tarifa');
+  if (tarifaEl) tarifaEl.value = td || th || '';
   const info = document.getElementById('alq_coste_info');
-  info.style.display = 'block';
-  const tarifas = [];
-  if (m.ch) tarifas.push(`${m.ch} €/hora`);
-  if (m.cd) tarifas.push(`${m.cd} €/día`);
-  info.textContent = `${m.tipo} · ${m.prov || 'Alquiler'} · ${tarifas.length ? tarifas.join(' · ') : 'tarifa no definida'}`;
+  if (info) {
+    info.style.display = 'block';
+    const tarifas = [];
+    if (th) tarifas.push(`${th} €/hora`);
+    if (td) tarifas.push(`${td} €/día`);
+    info.textContent = `${a.Categoria || 'Alquiler'} · ${a.Empresa || ''} · ${tarifas.length ? tarifas.join(' · ') : 'tarifa no definida'}`;
+  }
   if (!document.getElementById('alq_horas').value) document.getElementById('alq_horas').value = 1;
   onAlqUnidadChange();
 }
@@ -2689,6 +2703,37 @@ function calcMOECoste() {
     ? (h*t).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €' : '';
 }
 
+function poblarSelectMOExterna() {
+  const sel = document.getElementById('moe_select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Seleccionar perfil externo (o rellenar a mano) —</option>';
+  // Perfiles de MO externa de la obra activa (lista M_MOExterna)
+  const perfiles = (OBRA_ACTIVA && OBRA_ACTIVA.mo_externa) ? OBRA_ACTIVA.mo_externa : [];
+  perfiles.forEach((p, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    const th = p.TarifaHora || 0;
+    const emp = p.Empresa ? ` (${p.Empresa})` : '';
+    const coste = th ? ` — ${th}€/h` : '';
+    opt.textContent = `${p.CodigoPerfil || ''} · ${p.Descripcion || ''}${emp}${coste}`;
+    sel.appendChild(opt);
+  });
+  if(window.activarBuscadores) activarBuscadores();
+}
+
+function onMOESelect() {
+  const idx = document.getElementById('moe_select').value;
+  if (idx === '') return;
+  const perfiles = (OBRA_ACTIVA && OBRA_ACTIVA.mo_externa) ? OBRA_ACTIVA.mo_externa : [];
+  const p = perfiles[parseInt(idx)];
+  if (!p) return;
+  document.getElementById('moe_nombre').value  = p.Descripcion || '';
+  document.getElementById('moe_empresa').value = p.Empresa || '';
+  document.getElementById('moe_tarifa').value  = p.TarifaHora || '';
+  if (!document.getElementById('moe_horas').value) document.getElementById('moe_horas').value = 8;
+  if (typeof calcMOECoste === 'function') calcMOECoste();
+}
+
 function addMOExterna() {
   const nombre = document.getElementById('moe_nombre').value.trim();
   const empresa = document.getElementById('moe_empresa').value.trim();
@@ -2708,7 +2753,7 @@ function addMOExterna() {
   renderPersonal(); renderMOExterna();
   actualizarBadges();
   toggleForm('formMOExterna');
-  ['moe_nombre','moe_empresa','moe_horas','moe_tarifa','moe_coste_total'].forEach(id => {
+  ['moe_nombre','moe_empresa','moe_horas','moe_tarifa','moe_coste_total','moe_select'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   showToast('Trabajador externo añadido ✓', 'success');
