@@ -90,6 +90,20 @@ async function spReadAll(listTitle) {
   return (data && data.value) ? data.value : [];
 }
 
+// Devuelve un mapa { TituloColumna: InternalNameReal } leyendo los campos de la lista.
+// Esto desacopla la lectura del ORDEN de creación de columnas (field_N): leemos por
+// nombre, no por posición, así reordenar o añadir columnas no rompe nada.
+async function spFieldMap(listTitle) {
+  var data = await spGet("/lists/GetByTitle('" + listTitle +
+    "')/fields?$select=Title,InternalName,Hidden,ReadOnlyField&$filter=Hidden eq false");
+  var map = {};
+  (data.value || []).forEach(function (f) {
+    // Title es la primera columna real (InternalName === 'Title'); el resto por su Title.
+    if (map[f.Title] === undefined) map[f.Title] = f.InternalName;
+  });
+  return map;
+}
+
 /* ---------- ESQUEMA POSICIONAL (11 maestros, nombres reales) ---------- */
 var SP_SCHEMA = {
   // --- Corporativos (sin columna Proyecto) ---
@@ -141,12 +155,16 @@ function num(v) {
 }
 
 // Mapea una fila cruda de SP -> objeto con nombres reales de columna.
-function mapRow(raw, schema) {
+// Usa fieldMap { TituloColumna: InternalNameReal } para leer POR NOMBRE.
+// Si fieldMap no trae una columna, cae al nombre posicional field_N como respaldo
+// (compatibilidad con listas antiguas que aún no tengan todas las columnas).
+function mapRow(raw, schema, fieldMap) {
   var o = {}, cols = schema.cols, numset = {};
   (schema.num || []).forEach(function (k) { numset[k] = 1; });
   for (var i = 0; i < cols.length; i++) {
     var name = cols[i];
-    var val  = raw[internalName(i)];
+    var internal = (fieldMap && fieldMap[name]) ? fieldMap[name] : internalName(i);
+    var val = raw[internal];
     if (val === undefined) val = null;
     o[name] = numset[name] ? num(val) : val;   // resto se deja tal cual (texto/código/fecha)
   }
@@ -170,11 +188,12 @@ async function leerTodo(onProgress, incluirVacias) {
     var listName = ORDEN[i];
     var sch = SP_SCHEMA[listName];
     log('Leyendo ' + listName + '…');
+    var fieldMap = await spFieldMap(listName);   // nombre de columna -> InternalName real
     var rows = await spReadAll(listName);
     var mapped = [];
     var vacias = 0;
     rows.forEach(function (raw) {
-      var o = mapRow(raw, sch);
+      var o = mapRow(raw, sch, fieldMap);
       if (!incluirVacias && filaVacia(o)) { vacias++; return; }
       mapped.push(o);
     });
