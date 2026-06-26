@@ -156,14 +156,22 @@ function num(v) {
 
 // Mapea una fila cruda de SP -> objeto con nombres reales de columna.
 // Usa fieldMap { TituloColumna: InternalNameReal } para leer POR NOMBRE.
-// Si fieldMap no trae una columna, cae al nombre posicional field_N como respaldo
-// (compatibilidad con listas antiguas que aún no tengan todas las columnas).
+// La columna 0 (Clave) SIEMPRE se lee de 'Title': es el campo de título nativo
+// de SharePoint y donde reside el valor real (su columna "Clave"/LinkTitle es
+// calculada y no devuelve valor en la lectura de items).
+// Para el resto, si fieldMap no trae una columna, cae al nombre posicional
+// field_N como respaldo (compatibilidad con listas antiguas incompletas).
 function mapRow(raw, schema, fieldMap) {
   var o = {}, cols = schema.cols, numset = {};
   (schema.num || []).forEach(function (k) { numset[k] = 1; });
   for (var i = 0; i < cols.length; i++) {
     var name = cols[i];
-    var internal = (fieldMap && fieldMap[name]) ? fieldMap[name] : internalName(i);
+    var internal;
+    if (i === 0) {
+      internal = 'Title';                                   // Clave: siempre Title
+    } else {
+      internal = (fieldMap && fieldMap[name]) ? fieldMap[name] : internalName(i);
+    }
     var val = raw[internal];
     if (val === undefined) val = null;
     o[name] = numset[name] ? num(val) : val;   // resto se deja tal cual (texto/código/fecha)
