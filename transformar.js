@@ -192,14 +192,32 @@ function transformar(DATOS, opts) {
     if (fila && pc.Descripcion) fila.desc = pc.Descripcion;
   });
 
-  // 5) Materiales
+  // 5) Materiales = partidas de SUMINISTRO (dimensión con código de control 2.xx).
+  //    Se derivan de M_Partidas: cada partida cuya CtrlSuministro empieza por "2."
+  //    es un material/suministro. El campo `ts` lleva el código de task (2.xx) para
+  //    agruparlos en el desplegable. Coste y PU vienen de la dimensión Suministro.
+  (DATOS.partidas || []).forEach(function (p) {
+    var obra = OBRAS[(p.Proyecto || '').trim()];
+    if (!obra) return;
+    var ctrlSum = (p.CtrlSuministro != null ? String(p.CtrlSuministro) : '').trim();
+    if (ctrlSum.indexOf('2.') !== 0) return;   // solo dimensión de suministro 2.xx
+    obra.mat.push({
+      cod: p.Codigo || '', desc: p.Descripcion || '', ud: p.Ud || '',
+      pu: num(p.PuVentaSum), coste_ud: num(p.CosteUdSum),
+      te: '', ts: ctrlSum, ti: '', to: '',
+      _grupo: ctrlSum, _tipo_grupo: 'SUM'
+    });
+  });
+
+  // 5b) Materiales adicionales desde lista M_Materiales (si existieran), se suman
+  //     a los derivados. Permite cargar materiales que no estén en producción.
   (DATOS.materiales || []).forEach(function (m) {
     var obra = OBRAS[(m.Proyecto || '').trim()];
     if (!obra) return;
     obra.mat.push({
       cod: m.Codigo || '', desc: m.Descripcion || '', ud: m.Ud || '',
       pu: num(m.PrecioUnitario), coste_ud: num(m.CosteUnitario),
-      te: '', ts: '', ti: '', to: '', _grupo: m.Grupo || '', _tipo_grupo: 'SUM'
+      te: '', ts: m.Grupo || '', ti: '', to: '', _grupo: m.Grupo || '', _tipo_grupo: 'SUM'
     });
   });
 
