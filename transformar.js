@@ -6,7 +6,7 @@
    certificación, presupuesto de control y agrupaciones.
 
    MODELO DE PARTIDAS (estructura definitiva, validada contra
-   23-039_Maestro_Obra.xlsx y 025-388_Maestro_Obra_DEF.xlsx):
+   23-039_Maestro_Obra.xlsx y 26-008_Maestro_Obra_DEF.xlsx):
    - M_Partidas = partidas de PRODUCCIÓN. Una fila = una unidad
      de venta. Cada partida se descompone en hasta 4 dimensiones
      de control (Ingeniería, Suministro, Ejecución, Otros), cada
