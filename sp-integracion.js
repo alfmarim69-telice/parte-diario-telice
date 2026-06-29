@@ -151,12 +151,22 @@ var SP_SCHEMA = {
     num:['ImporteEstimado'] },
   Planificacion: { target:'planificacion', proyecto:true,
     cols:['Clave','Proyecto','Fecha','Semana','CodProduccion','Descripcion','Ud','CantidadPlanif','VentaPlanif','CostePlanif'],
-    num:['Semana','CantidadPlanif','VentaPlanif','CostePlanif'] }
+    num:['Semana','CantidadPlanif','VentaPlanif','CostePlanif'] },
+  ParteMateriales: { target:'parteMateriales', proyecto:true,
+    cols:['Clave','ParteId','Proyecto','CodMaterial','CodControl','Cantidad','TipoMovimiento','CosteUnitario'],
+    num:['CodControl','Cantidad','CosteUnitario'],
+    _fieldMap:{
+      'Clave':'Title','ParteId':'field_1','Proyecto':'field_2',
+      'CodMaterial':'field_3','CodControl':'field_4','Cantidad':'field_5',
+      'TipoMovimiento':'TipoMovimiento','CosteUnitario':'CosteUnitario'
+    }
+  }
 };
 
 // Orden de lectura (corporativos primero)
 var ORDEN = ['M_Proyectos','M_Personal','M_Maquinaria','M_Partidas','M_PartidasControl',
-             'M_Subcontratas','M_Materiales','M_MOExterna','M_Alquileres','M_Indirectos','Planificacion'];
+             'M_Subcontratas','M_Materiales','M_MOExterna','M_Alquileres','M_Indirectos',
+             'Planificacion','ParteMateriales'];
 
 function internalName(i) { return i === 0 ? 'Title' : 'field_' + i; }
 
@@ -282,7 +292,68 @@ async function spDelete(listTitle, id) {
   return true;
 }
 
-// Mapa fijo de nombres internos de M_Materiales (SharePoint codifica ó → _x00f3_)
+// Mapa fijo de ParteMateriales
+var PARTEMAT_FIELD_MAP = {
+  'Clave':'Title','ParteId':'field_1','Proyecto':'field_2',
+  'CodMaterial':'field_3','CodControl':'field_4','Cantidad':'field_5',
+  'TipoMovimiento':'TipoMovimiento','CosteUnitario':'CosteUnitario'
+};
+
+// Registra un movimiento de material (ENTRADA o SALIDA) en SharePoint
+async function registrarMovimientoMaterial(mov) {
+  // mov: { parteId, proyecto, codMaterial, codControl, cantidad, tipo, costeUnitario }
+  var clave = mov.proyecto + '|' + mov.parteId + '|' + mov.codMaterial + '|' + mov.tipo;
+  var body = { Title: clave };
+  var campos = {
+    'ParteId': mov.parteId || '',
+    'Proyecto': mov.proyecto || '',
+    'CodMaterial': mov.codMaterial || '',
+    'CodControl': mov.codControl || 0,
+    'Cantidad': mov.cantidad || 0,
+    'TipoMovimiento': mov.tipo || 'ENTRADA',
+    'CosteUnitario': mov.costeUnitario || 0
+  };
+  Object.keys(campos).forEach(function(col) {
+    body[PARTEMAT_FIELD_MAP[col]] = campos[col];
+  });
+  return spPost('ParteMateriales', body);
+}
+
+// Obtiene el stock disponible de un material en un proyecto
+// Devuelve { entradas, salidas, disponible }
+async function getStockMaterial(proyecto, codMaterial) {
+  var r = await spGet(
+    "/lists/GetByTitle('ParteMateriales')/items" +
+    "?$filter=field_2 eq '" + proyecto + "' and field_3 eq '" + codMaterial + "'" +
+    "&$select=field_5,TipoMovimiento&$top=5000"
+  );
+  var entradas = 0, salidas = 0;
+  (r.value || []).forEach(function(item) {
+    var cant = item.field_5 || 0;
+    if (item.TipoMovimiento === 'SALIDA') salidas += cant;
+    else entradas += cant;
+  });
+  return { entradas: entradas, salidas: salidas, disponible: entradas - salidas };
+}
+
+// Obtiene stock de todos los materiales de un proyecto
+async function getStockProyecto(proyecto) {
+  var r = await spGet(
+    "/lists/GetByTitle('ParteMateriales')/items" +
+    "?$filter=field_2 eq '" + proyecto + "'" +
+    "&$select=field_3,field_5,TipoMovimiento&$top=5000"
+  );
+  var stock = {};
+  (r.value || []).forEach(function(item) {
+    var cod = item.field_3 || '';
+    if (!stock[cod]) stock[cod] = { entradas: 0, salidas: 0, disponible: 0 };
+    var cant = item.field_5 || 0;
+    if (item.TipoMovimiento === 'SALIDA') stock[cod].salidas += cant;
+    else stock[cod].entradas += cant;
+    stock[cod].disponible = stock[cod].entradas - stock[cod].salidas;
+  });
+  return stock;
+}
 var MAT_FIELD_MAP = {
   'Proyecto':       'Proyecto',
   'Codigo':         'C_x00f3_digo',
@@ -375,7 +446,10 @@ global.SPTelice = {
   SP_SCHEMA: SP_SCHEMA,
   inicializarMateriales: inicializarMateriales,
   addMaterial: addMaterial,
-  deleteMaterial: deleteMaterial
+  deleteMaterial: deleteMaterial,
+  registrarMovimientoMaterial: registrarMovimientoMaterial,
+  getStockMaterial: getStockMaterial,
+  getStockProyecto: getStockProyecto
 };
 
 })(window);
