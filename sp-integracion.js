@@ -127,7 +127,19 @@ var SP_SCHEMA = {
     num:['CosteEstudio','Tarifa'] },
   M_Materiales: { target:'materiales', proyecto:true,
     cols:['Clave','Proyecto','Codigo','Descripcion','Ud','PrecioUnitario','CosteUnitario','Grupo'],
-    num:['PrecioUnitario','CosteUnitario'] },
+    num:['PrecioUnitario','CosteUnitario'],
+    // Nombres internos reales (SharePoint codifica ó → _x00f3_)
+    _fieldMap: {
+      'Clave':          'Title',
+      'Proyecto':       'Proyecto',
+      'Codigo':         'C_x00f3_digo',
+      'Descripcion':    'Descripci_x00f3_n',
+      'Ud':             'Ud',
+      'PrecioUnitario': 'field_5',
+      'CosteUnitario':  'field_6',
+      'Grupo':          'Grupo'
+    }
+  },
   M_MOExterna: { target:'moExterna', proyecto:true,
     cols:['Clave','Proyecto','CodigoPerfil','Descripcion','Empresa','Contrato','TarifaHora','Observaciones'],
     num:['TarifaHora'] },
@@ -270,12 +282,25 @@ async function spDelete(listTitle, id) {
   return true;
 }
 
-// Construye body para spPost/spPatch traduciendo nombres de columna a InternalName real
-async function buildMatBody(fm, clave, campos) {
+// Mapa fijo de nombres internos de M_Materiales (SharePoint codifica ó → _x00f3_)
+var MAT_FIELD_MAP = {
+  'Proyecto':       'Proyecto',
+  'Codigo':         'C_x00f3_digo',
+  'Descripcion':    'Descripci_x00f3_n',
+  'Ud':             'Ud',
+  'PrecioUnitario': 'field_5',
+  'CosteUnitario':  'field_6',
+  'Grupo':          'Grupo'
+};
+
+var MAT_CAMPOS_DATOS = ['Proyecto','Codigo','Descripcion','Ud','PrecioUnitario','CosteUnitario','Grupo'];
+
+// Construye body para spPost usando mapa fijo (sin depender de spFieldMap)
+function buildMatBody(clave, campos) {
   var body = { Title: clave };
-  Object.keys(campos).forEach(function(col) {
-    var internal = fm[col] || col;
-    body[internal] = campos[col];
+  MAT_CAMPOS_DATOS.forEach(function(col) {
+    if (campos[col] === undefined) return;
+    body[MAT_FIELD_MAP[col]] = campos[col];
   });
   return body;
 }
@@ -283,17 +308,14 @@ async function buildMatBody(fm, clave, campos) {
 // Puebla M_Materiales desde M_Partidas si está vacía para el proyecto dado.
 async function inicializarMateriales(proyecto, partidas) {
   var todos = await spGet(
-    "/lists/GetByTitle('M_Materiales')/items?$top=5000&$select=Id,field_1"
+    "/lists/GetByTitle('M_Materiales')/items?$top=5000&$select=Id,Proyecto"
   );
   var existentes = (todos.value || []).filter(function(x) {
-    return (x.field_1 || '') === proyecto;
+    return (x.Proyecto || '') === proyecto;
   });
   if (existentes.length > 0) {
     return { creados: 0, yaExistian: true };
   }
-
-  // Obtener fieldMap una sola vez
-  var fm = await spFieldMap('M_Materiales');
 
   var matPartidas = (partidas || []).filter(function (p) {
     return (p.Proyecto || '').trim() === proyecto &&
@@ -304,7 +326,7 @@ async function inicializarMateriales(proyecto, partidas) {
   for (var i = 0; i < matPartidas.length; i++) {
     var p = matPartidas[i];
     var clave = proyecto + '|' + (p.Codigo || '');
-    var body = await buildMatBody(fm, clave, {
+    var body = buildMatBody(clave, {
       'Proyecto':       proyecto,
       'Codigo':         p.Codigo || '',
       'Descripcion':    p.Descripcion || '',
@@ -321,9 +343,8 @@ async function inicializarMateriales(proyecto, partidas) {
 
 // Añade un material nuevo a M_Materiales
 async function addMaterial(proyecto, mat) {
-  var fm = await spFieldMap('M_Materiales');
   var clave = proyecto + '|' + mat.cod;
-  var body = await buildMatBody(fm, clave, {
+  var body = buildMatBody(clave, {
     'Proyecto':       proyecto,
     'Codigo':         mat.cod,
     'Descripcion':    mat.desc,
@@ -349,6 +370,8 @@ global.SPTelice = {
   currentAccount: currentAccount,
   leerTodo: leerTodo,
   spGet: spGet,
+  spPost: spPost,
+  spDelete: spDelete,
   SP_SCHEMA: SP_SCHEMA,
   inicializarMateriales: inicializarMateriales,
   addMaterial: addMaterial,
