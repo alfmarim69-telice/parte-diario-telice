@@ -274,10 +274,15 @@ async function spDelete(listTitle, id) {
 // Devuelve { creados, yaExistian } 
 async function inicializarMateriales(proyecto, partidas) {
   // Comprobar si ya hay materiales para este proyecto
-  var existentes = await spGet(
-    "/lists/GetByTitle('M_Materiales')/items?$filter=Proyecto eq '" + proyecto + "'&$top=1&$select=Id"
+  // Usamos $top=5000 y filtramos en cliente para evitar error 500
+  // por columnas no indexadas en SharePoint
+  var todos = await spGet(
+    "/lists/GetByTitle('M_Materiales')/items?$top=5000&$select=Id,Proyecto"
   );
-  if (existentes.value && existentes.value.length > 0) {
+  var existentes = (todos.value || []).filter(function(x) {
+    return (x.Proyecto || '') === proyecto;
+  });
+  if (existentes.length > 0) {
     return { creados: 0, yaExistian: true };
   }
   // Filtrar partidas con CtrlSuministro 2.xx
