@@ -208,7 +208,7 @@ async function leerTodo(onProgress, incluirVacias) {
     var listName = ORDEN[i];
     var sch = SP_SCHEMA[listName];
     log('Leyendo ' + listName + '…');
-    var fieldMap = await spFieldMap(listName);   // nombre de columna -> InternalName real
+    var fieldMap = sch._fieldMap || await spFieldMap(listName);   // usar mapa fijo si existe
     var rows = await spReadAll(listName);
     var mapped = [];
     var vacias = 0;
