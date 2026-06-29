@@ -2120,18 +2120,15 @@ function poblarSelectMateriales() {
     if (!grupos[m.ts]) grupos[m.ts] = [];
     grupos[m.ts].push({...m, _idx: i});
   });
-  const TASKS_2XX = {
-    '2.01':'Canaletas','2.02':'Arquetas ladrillo','2.03':'Arquetas prefab.',
-    '2.04':'Tubería PVC drenaje','2.06':'Tubería polietileno canal.',
-    '2.07':'Topo GSM-R','2.08':'Tubo acero y perchas','2.10':'Hito prefabricado',
-    '2.11':'Tubo acero 3"','2.12':'Protección cables','2.13':'Taladros y peldaños',
-    '2.15':'Rejilla falso techo','2.16':'Canaleta PVC','2.17':'Edificios técnicos',
-    '2.18':'Fibra óptica','2.19':'Tubo polietileno FO','2.21':'Herrajes',
-    '2.22':'Empalmes y cajas','2.23':'Switch','2.29':'SAI','2.30':'Armarios repartidores',
-  };
+  // Descripciones de tasks desde la obra activa (específicas por obra)
+  const tasks2xx = {};
+  (OBRA_ACTIVA && OBRA_ACTIVA.partidas_ppto || [])
+    .filter(t => String(t.cod).startsWith('2.'))
+    .forEach(t => { tasks2xx[t.cod] = t.desc; });
+
   Object.keys(grupos).sort().forEach(task => {
     const grp = document.createElement('optgroup');
-    grp.label = `${task} · ${TASKS_2XX[task] || task}`;
+    grp.label = `${task} · ${tasks2xx[task] || task}`;
     grupos[task].forEach(m => {
       const opt = document.createElement('option');
       opt.value = m._idx;
