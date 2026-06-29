@@ -286,7 +286,7 @@ async function inicializarMateriales(proyecto, partidas) {
     "/lists/GetByTitle('M_Materiales')/items?$top=5000&$select=Id,field_1
   );
   var existentes = (todos.value || []).filter(function(x) {
-    return (x.Proyecto || '') === proyecto;
+    return (x.field_1 || '') === proyecto;
   });
   if (existentes.length > 0) {
     return { creados: 0, yaExistian: true };
