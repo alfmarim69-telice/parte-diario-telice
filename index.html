@@ -535,7 +535,7 @@
       <option value="encargado">👷 Jefe de equipo</option>
       <option value="jefe">📋 Jefe de obra</option>
     </select>
-    <button class="sync-btn" onclick="syncPartes()" style="padding:4px 8px;font-size:11px;">
+    <button class="sync-btn" onclick="syncPartes()" title="Sincroniza los partes locales con SharePoint. Cuando el punto es verde, los datos están al día." style="padding:4px 8px;font-size:11px;">
       <span class="sync-dot" id="syncDot"></span>
       <span id="syncLabel">Sincronizar</span>
     </button>
@@ -740,9 +740,9 @@
           <div class="field">
             <label>Dieta</label>
             <select id="p_pernocta" onchange="onPernoctaChange()">
+              <option value="sin">Sin dieta</option>
               <option value="no">No pernocta — media dieta</option>
               <option value="si">Pernocta — dieta completa</option>
-              <option value="sin">Sin dieta</option>
             </select>
           </div>
           <div class="field" id="p_km_wrap" style="display:none;">
@@ -1123,6 +1123,16 @@
           <div class="field">
             <label>Nº contrato / albarán</label>
             <input type="text" id="sub_contrato" placeholder="(opcional)">
+          </div>
+        </div>
+        <div class="field-grid cols-3" style="margin-bottom:8px;">
+          <div class="field">
+            <label>PK inicio</label>
+            <input type="number" id="sub_pki" min="0" step="1" placeholder="—">
+          </div>
+          <div class="field">
+            <label>PK final</label>
+            <input type="number" id="sub_pkf" min="0" step="1" placeholder="—">
           </div>
         </div>
         <div class="add-form-actions">
@@ -2354,6 +2364,8 @@ function addSubcontrata() {
   if (!tarifa || tarifa <= 0) { showToast('Introduce la tarifa €/ud', 'error'); return; }
   const empresa  = document.getElementById('sub_empresa').value.trim();
   const contrato = document.getElementById('sub_contrato').value.trim();
+  const pki = document.getElementById('sub_pki').value.trim();
+  const pkf = document.getElementById('sub_pkf').value.trim();
 
   state.subcontratas.push({
     idx_maestro: idx,
@@ -2364,13 +2376,14 @@ function addSubcontrata() {
     venta_total: Math.round(cant * s.pu * 100) / 100,
     coste_estudio: s.coste_estudio,
     task: s.task,
-    empresa, contrato
+    empresa, contrato,
+    pk_ini: pki || null, pk_fin: pkf || null
   });
 
   renderSubcontratas();
   actualizarBadges();
   toggleForm('formSubcontratas');
-  ['sub_select','sub_cod','sub_task','sub_ud','sub_cant','sub_tarifa','sub_empresa','sub_contrato'].forEach(id => {
+  ['sub_select','sub_cod','sub_task','sub_ud','sub_cant','sub_tarifa','sub_empresa','sub_contrato','sub_pki','sub_pkf'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('sub_empresa_sel').value = '';
@@ -3411,7 +3424,7 @@ function addPersonal() {
   toggleForm('formPersonal');
   limpiarForm(['p_num','p_nombre','p_horas','p_km','p_incidencia']);
   document.getElementById('p_select').value = '';
-  document.getElementById('p_pernocta').value = 'no';
+  document.getElementById('p_pernocta').value = 'sin';
   document.getElementById('p_km_wrap').style.display = 'none';
   document.getElementById('p_dieta_info').style.display = 'none';
   document.getElementById('p_coste_info').style.display = 'none';
@@ -4312,7 +4325,13 @@ function actualizarHistorial() {
     const nCost = (p.costes    || []).length;
     const totalH = (p.personal||[]).reduce((s,x)=>s+(x.horas||0),0);
     const totalVenta = (p.produccion||[]).reduce((s,x)=>s+(x.importe||0),0);
-    const totalCoste = (p.costes||[]).reduce((s,x)=>s+(x.coste_real||0),0);
+    const totalCosteMOD  = (p.personal||[]).reduce((s,x)=>s+(x.coste_mod||0),0);
+    const totalCosteMAQ  = (p.maquinaria||[]).reduce((s,x)=>s+(x.coste_maq||0),0);
+    const totalCosteMAT  = (p.materiales||[]).reduce((s,x)=>s+(x.coste_total||0),0);
+    const totalCosteSUB  = (p.subcontratas||[]).reduce((s,x)=>s+(x.coste_total||0),0);
+    const totalCosteOtros = (p.costes||[]).filter(c=>c.tipo==='OTROS').reduce((s,x)=>s+(x.coste_otros||x.coste_real||0),0);
+    const totalCosteTask  = (p.costes||[]).reduce((s,x)=>s+(x.coste_real||0),0);
+    const totalCoste = Math.max(totalCosteMOD + totalCosteMAQ + totalCosteMAT + totalCosteSUB + totalCosteOtros, totalCosteTask);
     const nSub = (p.subcontratas||[]).length;
     div.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
@@ -4791,10 +4810,10 @@ function calcularCumplimiento(hist, periodo, fechaRef) {
     valorProd += vProd;
     if (cantPlan > 0 || cantProd > 0) {
       detalle.push({ cod, desc: pc.desc, ud: pc.ud, cantPlan, cantProd,
-        pct: cantPlan > 0 ? Math.round(cantProd / cantPlan * 100) : (cantProd > 0 ? 999 : 0) });
+        pct: cantPlan > 0 ? Math.round(cantProd / cantPlan * 100) : null });
     }
   });
-  const pct = valorPlan > 0 ? Math.round(valorProd / valorPlan * 100) : (valorProd > 0 ? 999 : null);
+  const pct = valorPlan > 0 ? Math.round(valorProd / valorPlan * 100) : null;
   return { pct, valorPlan, valorProd, detalle };
 }
 
