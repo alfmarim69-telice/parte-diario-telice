@@ -203,6 +203,7 @@ async function leerTodo(onProgress, incluirVacias) {
     rows.forEach(function (raw) {
       var o = mapRow(raw, sch, fieldMap);
       if (!incluirVacias && filaVacia(o)) { vacias++; return; }
+      o._sp_id = raw.Id || raw.ID || null;   // ID nativo de SharePoint
       mapped.push(o);
     });
     DATOS[sch.target] = mapped;
@@ -214,6 +215,116 @@ async function leerTodo(onProgress, incluirVacias) {
   return DATOS;
 }
 
+/* ---------- ESCRITURA ---------- */
+async function spPost(listTitle, body) {
+  var t = await getToken();
+  var r = await fetch(spUrl("/lists/GetByTitle('" + listTitle + "')/items"), {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + t,
+      'Accept': 'application/json;odata=nometadata',
+      'Content-Type': 'application/json;odata=nometadata'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) {
+    var msg = 'HTTP ' + r.status;
+    try { var j = await r.json(); if (j.error && j.error.message) msg += ': ' + j.error.message.value; } catch(e) {}
+    throw new Error(msg);
+  }
+  return r.json();
+}
+
+async function spPatch(listTitle, id, body) {
+  var t = await getToken();
+  var r = await fetch(spUrl("/lists/GetByTitle('" + listTitle + "')/items(" + id + ")"), {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + t,
+      'Accept': 'application/json;odata=nometadata',
+      'Content-Type': 'application/json;odata=nometadata',
+      'X-HTTP-Method': 'MERGE',
+      'IF-MATCH': '*'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok && r.status !== 204) {
+    var msg = 'HTTP ' + r.status;
+    try { var j = await r.json(); if (j.error && j.error.message) msg += ': ' + j.error.message.value; } catch(e) {}
+    throw new Error(msg);
+  }
+  return true;
+}
+
+async function spDelete(listTitle, id) {
+  var t = await getToken();
+  var r = await fetch(spUrl("/lists/GetByTitle('" + listTitle + "')/items(" + id + ")"), {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + t,
+      'X-HTTP-Method': 'DELETE',
+      'IF-MATCH': '*'
+    }
+  });
+  if (!r.ok && r.status !== 204) throw new Error('HTTP ' + r.status);
+  return true;
+}
+
+// Puebla M_Materiales desde M_Partidas si está vacía para el proyecto dado.
+// Devuelve { creados, yaExistian } 
+async function inicializarMateriales(proyecto, partidas) {
+  // Comprobar si ya hay materiales para este proyecto
+  var existentes = await spGet(
+    "/lists/GetByTitle('M_Materiales')/items?$filter=Proyecto eq '" + proyecto + "'&$top=1&$select=Id"
+  );
+  if (existentes.value && existentes.value.length > 0) {
+    return { creados: 0, yaExistian: true };
+  }
+  // Filtrar partidas con CtrlSuministro 2.xx
+  var matPartidas = (partidas || []).filter(function (p) {
+    return (p.Proyecto || '').trim() === proyecto &&
+           String(p.CtrlSuministro || '').trim().indexOf('2.') === 0;
+  });
+  var creados = 0;
+  for (var i = 0; i < matPartidas.length; i++) {
+    var p = matPartidas[i];
+    var clave = proyecto + '|' + (p.Codigo || '');
+    await spPost('M_Materiales', {
+      Title: clave,
+      Proyecto: proyecto,
+      Codigo: p.Codigo || '',
+      Descripcion: p.Descripcion || '',
+      Ud: p.Ud || '',
+      PrecioUnitario: p.PuVentaSum || 0,
+      CosteUnitario: p.CosteUdSum || 0,
+      Grupo: String(p.CtrlSuministro || '').trim()
+    });
+    creados++;
+  }
+  return { creados: creados, yaExistian: false };
+}
+
+// Añade un material nuevo a M_Materiales
+async function addMaterial(proyecto, mat) {
+  var clave = proyecto + '|' + mat.cod;
+  var item = await spPost('M_Materiales', {
+    Title: clave,
+    Proyecto: proyecto,
+    Codigo: mat.cod,
+    Descripcion: mat.desc,
+    Ud: mat.ud,
+    PrecioUnitario: mat.pu || 0,
+    CosteUnitario: mat.coste_ud || 0,
+    Grupo: mat.grupo
+  });
+  return item.Id || item.id || null;
+}
+
+// Elimina un material de M_Materiales por su ID de SharePoint
+async function deleteMaterial(spId) {
+  return spDelete('M_Materiales', spId);
+}
+
 /* ---------- API pública ---------- */
 global.SPTelice = {
   ensureReady: ensureReady,
@@ -221,7 +332,10 @@ global.SPTelice = {
   currentAccount: currentAccount,
   leerTodo: leerTodo,
   spGet: spGet,
-  SP_SCHEMA: SP_SCHEMA
+  SP_SCHEMA: SP_SCHEMA,
+  inicializarMateriales: inicializarMateriales,
+  addMaterial: addMaterial,
+  deleteMaterial: deleteMaterial
 };
 
 })(window);
