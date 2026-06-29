@@ -5080,6 +5080,7 @@ function calcularCumplimiento(hist, periodo, fechaRef) {
 }
 
 function renderInforme() {
+  if (!OBRA_ACTIVA || !PARTIDAS_CERT || !PARTIDAS_CERT.length) return;
   const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   const fechaRef = document.getElementById('fechaRef').value || new Date().toISOString().split('T')[0];
   const partesFiltrados = filtrarPartes(hist, _periodo, fechaRef);
