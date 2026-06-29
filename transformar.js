@@ -192,33 +192,42 @@ function transformar(DATOS, opts) {
     if (fila && pc.Descripcion) fila.desc = pc.Descripcion;
   });
 
-  // 5) Materiales = partidas de SUMINISTRO (dimensión con código de control 2.xx).
-  //    Se derivan de M_Partidas: cada partida cuya CtrlSuministro empieza por "2."
-  //    es un material/suministro. El campo `ts` lleva el código de task (2.xx) para
-  //    agruparlos en el desplegable. Coste y PU vienen de la dimensión Suministro.
-  (DATOS.partidas || []).forEach(function (p) {
-    var obra = OBRAS[(p.Proyecto || '').trim()];
-    if (!obra) return;
-    var ctrlSum = (p.CtrlSuministro != null ? String(p.CtrlSuministro) : '').trim();
-    if (ctrlSum.indexOf('2.') !== 0) return;   // solo dimensión de suministro 2.xx
-    obra.mat.push({
-      cod: p.Codigo || '', desc: p.Descripcion || '', ud: p.Ud || '',
-      pu: num(p.PuVentaSum), coste_ud: num(p.CosteUdSum),
-      te: '', ts: ctrlSum, ti: '', to: '',
-      _grupo: ctrlSum, _tipo_grupo: 'SUM'
+  // 5) Materiales: fuente de verdad = M_Materiales en SharePoint.
+  //    Si M_Materiales tiene filas para esta obra → usarlas exclusivamente.
+  //    Si está vacía → derivar de M_Partidas (partidas con CtrlSuministro 2.xx)
+  //    como fallback. La primera vez que se conecte, inicializarMateriales() en
+  //    sp-integracion.js poblará M_Materiales con esos derivados automáticamente.
+  Object.keys(OBRAS).forEach(function (proy) {
+    var obra = OBRAS[proy];
+    var matSP = (DATOS.materiales || []).filter(function (m) {
+      return (m.Proyecto || '').trim() === proy;
     });
-  });
-
-  // 5b) Materiales adicionales desde lista M_Materiales (si existieran), se suman
-  //     a los derivados. Permite cargar materiales que no estén en producción.
-  (DATOS.materiales || []).forEach(function (m) {
-    var obra = OBRAS[(m.Proyecto || '').trim()];
-    if (!obra) return;
-    obra.mat.push({
-      cod: m.Codigo || '', desc: m.Descripcion || '', ud: m.Ud || '',
-      pu: num(m.PrecioUnitario), coste_ud: num(m.CosteUnitario),
-      te: '', ts: m.Grupo || '', ti: '', to: '', _grupo: m.Grupo || '', _tipo_grupo: 'SUM'
-    });
+    if (matSP.length > 0) {
+      // M_Materiales tiene datos → usarlos como fuente exclusiva
+      matSP.forEach(function (m) {
+        obra.mat.push({
+          cod: m.Codigo || '', desc: m.Descripcion || '', ud: m.Ud || '',
+          pu: num(m.PrecioUnitario), coste_ud: num(m.CosteUnitario),
+          te: '', ts: m.Grupo || '', ti: '', to: '',
+          _grupo: m.Grupo || '', _tipo_grupo: 'SUM',
+          _sp_id: m._sp_id || null   // ID del item en SharePoint para editar/borrar
+        });
+      });
+    } else {
+      // M_Materiales vacía → derivar de M_Partidas (modo inicial / sin SP)
+      (DATOS.partidas || []).forEach(function (p) {
+        if ((p.Proyecto || '').trim() !== proy) return;
+        var ctrlSum = (p.CtrlSuministro != null ? String(p.CtrlSuministro) : '').trim();
+        if (ctrlSum.indexOf('2.') !== 0) return;
+        obra.mat.push({
+          cod: p.Codigo || '', desc: p.Descripcion || '', ud: p.Ud || '',
+          pu: num(p.PuVentaSum), coste_ud: num(p.CosteUdSum),
+          te: '', ts: ctrlSum, ti: '', to: '',
+          _grupo: ctrlSum, _tipo_grupo: 'SUM',
+          _sp_id: null
+        });
+      });
+    }
   });
 
   // 6) Subcontratas
