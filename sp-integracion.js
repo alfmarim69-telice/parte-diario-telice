@@ -434,27 +434,6 @@ async function deleteMaterial(spId) {
 }
 
 
-/* ---------- API pública ---------- */
-global.SPTelice = {
-  ensureReady: ensureReady,
-  login: login,
-  currentAccount: currentAccount,
-  leerTodo: leerTodo,
-  spGet: spGet,
-  spPost: spPost,
-  spDelete: spDelete,
-  SP_SCHEMA: SP_SCHEMA,
-  inicializarMateriales: inicializarMateriales,
-  addMaterial: addMaterial,
-  deleteMaterial: deleteMaterial,
-  registrarMovimientoMaterial: registrarMovimientoMaterial,
-  getStockMaterial: getStockMaterial,
-  getStockProyecto: getStockProyecto,
-  guardarParteEnSP: guardarParteEnSP
-};
-
-})(window);
-
 // ═══════════════════════════════════════════════════════
 // GUARDADO COMPLETO DEL PARTE EN SHAREPOINT
 // ═══════════════════════════════════════════════════════
@@ -648,3 +627,25 @@ async function guardarParteEnSP(parte) {
 
   return { parteId, errores, ok: errores.length === 0 };
 }
+
+/* ---------- API pública ---------- */
+global.SPTelice = {
+  ensureReady: ensureReady,
+  login: login,
+  currentAccount: currentAccount,
+  leerTodo: leerTodo,
+  spGet: spGet,
+  spPost: spPost,
+  spDelete: spDelete,
+  SP_SCHEMA: SP_SCHEMA,
+  inicializarMateriales: inicializarMateriales,
+  addMaterial: addMaterial,
+  deleteMaterial: deleteMaterial,
+  registrarMovimientoMaterial: registrarMovimientoMaterial,
+  getStockMaterial: getStockMaterial,
+  getStockProyecto: getStockProyecto,
+  guardarParteEnSP: guardarParteEnSP
+};
+
+})(window);
+
