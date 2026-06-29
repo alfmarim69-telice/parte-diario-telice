@@ -977,7 +977,12 @@
   <div class="card">
     <div class="card-head">
       <span class="card-head-title">Materiales y suministros recibidos</span>
-      <span style="font-size:11px;color:var(--text3);" id="totalCosteMatLabel">0,00 €</span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span style="font-size:11px;color:var(--text3);" id="totalCosteMatLabel">0,00 €</span>
+        <button onclick="abrirCatalogoMateriales()" title="Ver y editar el catálogo de materiales de la obra"
+          style="font-size:11px;padding:3px 8px;background:var(--bg4);border:1px solid var(--border2);
+                 border-radius:4px;color:var(--text2);cursor:pointer;">⚙ Catálogo</button>
+      </div>
     </div>
     <div class="card-body">
       <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5;">
@@ -1617,6 +1622,71 @@
   </div>
 </div>
 
+<!-- ═══ Modal catálogo de materiales ═══ -->
+<div class="modal-overlay" id="modalCatalogo" style="display:none;" onclick="if(event.target===this)cerrarCatalogo()">
+  <div class="modal-box" style="max-width:700px;">
+    <div class="modal-header">
+      <span class="modal-title">⚙ Catálogo de materiales · <span id="catProyecto"></span></span>
+      <button class="modal-close" onclick="cerrarCatalogo()">×</button>
+    </div>
+    <div class="modal-body">
+      <!-- Estado de sincronización -->
+      <div id="catEstado" style="font-size:11px;color:var(--text3);margin-bottom:10px;font-family:var(--mono);"></div>
+
+      <!-- Lista de materiales -->
+      <div id="catLista" style="margin-bottom:16px;max-height:340px;overflow-y:auto;"></div>
+
+      <!-- Formulario añadir nuevo material -->
+      <div style="border-top:1px solid var(--border);padding-top:12px;">
+        <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:8px;
+                    text-transform:uppercase;letter-spacing:0.05em;">＋ Añadir material fuera de presupuesto</div>
+        <div class="field-grid" style="margin-bottom:8px;">
+          <div class="field">
+            <label>Código</label>
+            <input type="text" id="cat_cod" placeholder="Ej: MAT-EXT-001" style="text-transform:uppercase;">
+          </div>
+          <div class="field">
+            <label>Unidad</label>
+            <input type="text" id="cat_ud" placeholder="ud / m / kg…">
+          </div>
+        </div>
+        <div class="field col-1" style="margin-bottom:8px;">
+          <label>Descripción</label>
+          <input type="text" id="cat_desc" placeholder="Nombre del material">
+        </div>
+        <div class="field-grid cols-3" style="margin-bottom:8px;">
+          <div class="field">
+            <label>Precio venta €/ud</label>
+            <input type="number" id="cat_pu" min="0" step="0.0001" placeholder="0.0000">
+          </div>
+          <div class="field">
+            <label>Coste €/ud</label>
+            <input type="number" id="cat_cu" min="0" step="0.0001" placeholder="0.0000">
+          </div>
+          <div class="field">
+            <label>Task (2.xx)</label>
+            <select id="cat_grupo">
+              <option value="">— Seleccionar —</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="guardarNuevoMaterial()"
+            style="flex:1;padding:8px;background:var(--accent);color:#fff;border:none;
+                   border-radius:var(--r);font-size:13px;font-weight:600;cursor:pointer;">
+            Guardar en catálogo
+          </button>
+          <button onclick="limpiarFormCatalogo()"
+            style="padding:8px 16px;background:transparent;border:1px solid var(--border2);
+                   border-radius:var(--r);font-size:12px;color:var(--text2);cursor:pointer;">
+            Limpiar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ Integración SharePoint (MSAL + lectura + transformación) ═══ -->
 <script src="msal-browser.min.js"></script>
 <script src="sp-integracion.js"></script>
@@ -1916,6 +1986,7 @@ async function inicializarDatos(onEstado) {
       }
       estado('Leyendo maestros…');
       const DATOS = await SPTelice.leerTodo(msg => estado(msg));
+      window._DATOS_SP_PARTIDAS = DATOS.partidas || [];  // para inicializarMateriales
       const out = TransformarTelice.transformar(DATOS);
       if (out && out.OBRAS && Object.keys(out.OBRAS).length) {
         OBRAS = out.OBRAS;
@@ -4598,6 +4669,197 @@ function cerrarModal(e) {
   if (e.target.id === 'modalParte') {
     document.getElementById('modalParte').style.display = 'none';
   }
+}
+
+// ═══════════════════════════════════════════
+// CATÁLOGO DE MATERIALES
+// ═══════════════════════════════════════════
+async function abrirCatalogoMateriales() {
+  const modal = document.getElementById('modalCatalogo');
+  const obra = OBRA_ACTIVA;
+  if (!obra) { showToast('Selecciona una obra primero', 'error'); return; }
+
+  document.getElementById('catProyecto').textContent = obra.codigo || '';
+  document.getElementById('catEstado').textContent = 'Cargando…';
+  modal.style.display = 'flex';
+
+  // Poblar selector de tasks 2.xx
+  const sel = document.getElementById('cat_grupo');
+  sel.innerHTML = '<option value="">— Seleccionar —</option>';
+  const tasks2xx = (obra.partidas_ppto || []).filter(t => String(t.cod).startsWith('2.'));
+  tasks2xx.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t.cod;
+    o.textContent = t.cod + ' · ' + (t.desc || '').substring(0, 50);
+    sel.appendChild(o);
+  });
+
+  // Inicializar en SP si está vacío, luego renderizar
+  const haySP = typeof SPTelice !== 'undefined' && SPTelice.inicializarMateriales;
+  if (haySP && navigator.onLine) {
+    try {
+      document.getElementById('catEstado').textContent = 'Comprobando SharePoint…';
+      const rawPartidas = window._DATOS_SP_PARTIDAS || [];
+      const res = await SPTelice.inicializarMateriales(obra.codigo, rawPartidas);
+      if (res.creados > 0) {
+        document.getElementById('catEstado').textContent =
+          `✓ Catálogo inicializado: ${res.creados} materiales creados desde presupuesto.`;
+        // Recargar MAT_MAESTRO desde SP
+        await recargarMateriales(obra.codigo);
+      } else if (res.yaExistian) {
+        document.getElementById('catEstado').textContent =
+          `SharePoint · ${MAT_MAESTRO.length} materiales cargados`;
+      }
+    } catch(err) {
+      document.getElementById('catEstado').textContent =
+        'Sin conexión SP · mostrando datos locales (' + MAT_MAESTRO.length + ' materiales)';
+    }
+  } else {
+    document.getElementById('catEstado').textContent =
+      `Local · ${MAT_MAESTRO.length} materiales (sin SharePoint)`;
+  }
+
+  renderCatalogo();
+}
+
+function renderCatalogo() {
+  const lista = document.getElementById('catLista');
+  if (!MAT_MAESTRO.length) {
+    lista.innerHTML = '<div style="font-size:11px;color:var(--text3);font-style:italic;">Sin materiales cargados.</div>';
+    return;
+  }
+  // Agrupar por task
+  const grupos = {};
+  MAT_MAESTRO.forEach((m, i) => {
+    const g = m._grupo || '—';
+    if (!grupos[g]) grupos[g] = [];
+    grupos[g].push({ ...m, _idx: i });
+  });
+  let html = '';
+  Object.keys(grupos).sort().forEach(g => {
+    html += `<div style="font-size:10px;font-weight:700;color:var(--text3);font-family:var(--mono);
+                         text-transform:uppercase;letter-spacing:0.06em;margin:8px 0 4px;
+                         padding-bottom:2px;border-bottom:1px solid var(--border);">Task ${g}</div>`;
+    grupos[g].forEach(m => {
+      const puedeBorrar = m._sp_id !== null && m._sp_id !== undefined;
+      html += `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;
+                           border-bottom:1px solid var(--border);font-size:12px;">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);min-width:110px;">${m.cod}</span>
+        <span style="flex:1;color:var(--text1);">${m.desc.replace('Suministro de ','').replace('SUMINISTRO DE ','')}</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);min-width:30px;">${m.ud}</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--accent);min-width:70px;text-align:right;">${(m.pu||0).toFixed(4)}</span>
+        ${puedeBorrar
+          ? `<button onclick="eliminarMaterialCatalogo(${m._sp_id}, ${m._idx})"
+               title="Eliminar del catálogo"
+               style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;padding:0 4px;">×</button>`
+          : `<span style="width:22px;"></span>`}
+      </div>`;
+    });
+  });
+  lista.innerHTML = html;
+}
+
+async function guardarNuevoMaterial() {
+  const cod  = document.getElementById('cat_cod').value.trim().toUpperCase();
+  const desc = document.getElementById('cat_desc').value.trim();
+  const ud   = document.getElementById('cat_ud').value.trim();
+  const pu   = parseFloat(document.getElementById('cat_pu').value) || 0;
+  const cu   = parseFloat(document.getElementById('cat_cu').value) || 0;
+  const grupo = document.getElementById('cat_grupo').value;
+
+  if (!cod)   { showToast('Introduce un código', 'error'); return; }
+  if (!desc)  { showToast('Introduce la descripción', 'error'); return; }
+  if (!grupo) { showToast('Selecciona el Task (2.xx)', 'error'); return; }
+  if (!ud)    { showToast('Introduce la unidad', 'error'); return; }
+
+  // Comprobar duplicado
+  if (MAT_MAESTRO.find(m => m.cod === cod)) {
+    showToast('Ya existe un material con ese código', 'error'); return;
+  }
+
+  const obra = OBRA_ACTIVA;
+  const haySP = typeof SPTelice !== 'undefined' && SPTelice.addMaterial && navigator.onLine;
+
+  let spId = null;
+  if (haySP) {
+    try {
+      document.getElementById('catEstado').textContent = 'Guardando en SharePoint…';
+      spId = await SPTelice.addMaterial(obra.codigo, { cod, desc, ud, pu, coste_ud: cu, grupo });
+      document.getElementById('catEstado').textContent = '✓ Guardado en SharePoint';
+    } catch(err) {
+      showToast('Error SP: ' + err.message, 'error');
+      document.getElementById('catEstado').textContent = 'Error al guardar en SharePoint';
+      return;
+    }
+  }
+
+  // Añadir a MAT_MAESTRO en memoria
+  MAT_MAESTRO.push({
+    cod, desc, ud, pu, coste_ud: cu,
+    te: '', ts: grupo, ti: '', to: '',
+    _grupo: grupo, _tipo_grupo: 'SUM',
+    _sp_id: spId
+  });
+
+  // Actualizar también la obra activa
+  if (OBRA_ACTIVA) OBRA_ACTIVA.mat = [...MAT_MAESTRO];
+
+  limpiarFormCatalogo();
+  renderCatalogo();
+  poblarSelectMateriales();  // actualizar selector del formulario de parte
+  showToast('Material añadido al catálogo ✓', 'success');
+}
+
+async function eliminarMaterialCatalogo(spId, idx) {
+  if (!confirm('¿Eliminar este material del catálogo?')) return;
+
+  const haySP = typeof SPTelice !== 'undefined' && SPTelice.deleteMaterial && navigator.onLine;
+  if (haySP && spId) {
+    try {
+      document.getElementById('catEstado').textContent = 'Eliminando de SharePoint…';
+      await SPTelice.deleteMaterial(spId);
+      document.getElementById('catEstado').textContent = '✓ Eliminado de SharePoint';
+    } catch(err) {
+      showToast('Error SP: ' + err.message, 'error');
+      return;
+    }
+  }
+
+  MAT_MAESTRO.splice(idx, 1);
+  if (OBRA_ACTIVA) OBRA_ACTIVA.mat = [...MAT_MAESTRO];
+  renderCatalogo();
+  poblarSelectMateriales();
+  showToast('Material eliminado ✓', 'success');
+}
+
+async function recargarMateriales(proyecto) {
+  try {
+    const DATOS = await SPTelice.leerTodo(() => {});
+    const matSP = (DATOS.materiales || []).filter(m => (m.Proyecto || '').trim() === proyecto);
+    MAT_MAESTRO.length = 0;
+    matSP.forEach(m => MAT_MAESTRO.push({
+      cod: m.Codigo || '', desc: m.Descripcion || '', ud: m.Ud || '',
+      pu: m.PrecioUnitario || 0, coste_ud: m.CosteUnitario || 0,
+      te: '', ts: m.Grupo || '', ti: '', to: '',
+      _grupo: m.Grupo || '', _tipo_grupo: 'SUM',
+      _sp_id: m._sp_id || null
+    }));
+    if (OBRA_ACTIVA) OBRA_ACTIVA.mat = [...MAT_MAESTRO];
+    poblarSelectMateriales();
+  } catch(err) {
+    console.warn('recargarMateriales falló:', err.message);
+  }
+}
+
+function limpiarFormCatalogo() {
+  ['cat_cod','cat_desc','cat_ud','cat_pu','cat_cu'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('cat_grupo').value = '';
+}
+
+function cerrarCatalogo() {
+  document.getElementById('modalCatalogo').style.display = 'none';
 }
 
 function onProyectoChange() {
