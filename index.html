@@ -1224,11 +1224,17 @@
   <div class="card">
     <div class="card-head">
       <span class="card-head-title">Almacén de obra · stock de materiales</span>
-      <span style="font-size:11px;color:var(--text3);" id="totalValorAlmacenLabel">0,00 €</span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span style="font-size:10px;color:var(--text3);" id="almacenFuente"></span>
+        <button onclick="renderAlmacen()" title="Refrescar stock desde SharePoint"
+          style="font-size:11px;padding:3px 8px;background:var(--bg4);border:1px solid var(--border2);
+                 border-radius:4px;color:var(--text2);cursor:pointer;">↺</button>
+        <span style="font-size:11px;color:var(--text3);" id="totalValorAlmacenLabel">0,00 €</span>
+      </div>
     </div>
     <div class="card-body">
       <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5;">
-        Stock acumulado a partir de los partes enviados: lo recibido en Materiales menos lo consumido al dar coste. El saldo es lo que queda disponible en obra para consumir en próximos partes.
+        Stock compartido entre todos los jefes de equipo del proyecto. Las entradas se registran al añadir material recibido en el parte.
       </div>
       <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
@@ -2257,6 +2263,24 @@ function addMaterial() {
     foto: _matFotoData || null
   });
 
+  // Registrar ENTRADA en SharePoint si hay conexión
+  if (typeof SPTelice !== 'undefined' && SPTelice.registrarMovimientoMaterial && navigator.onLine && OBRA_ACTIVA) {
+    const parteId = 'BORRADOR_' + new Date().toISOString().split('T')[0] + '_' + (state.cuadrilla || 'SIN');
+    SPTelice.registrarMovimientoMaterial({
+      parteId: parteId,
+      proyecto: OBRA_ACTIVA.codigo,
+      codMaterial: m.cod,
+      codControl: m.ts || 0,
+      cantidad: cant,
+      tipo: 'ENTRADA',
+      costeUnitario: costeUd
+    }).then(() => {
+      console.log('Stock actualizado en SP: ENTRADA', m.cod, cant);
+    }).catch(e => {
+      console.warn('No se pudo registrar en SP:', e.message);
+    });
+  }
+
   renderMateriales();
   actualizarBadges();
   toggleForm('formMateriales');
@@ -3020,15 +3044,58 @@ function getDisponibleMat() {
   return disp;
 }
 
-function renderAlmacen() {
-  const alm = calcularAlmacen();
-  const body = document.getElementById('bodyAlmacen');
+async function renderAlmacen() {
+  const body  = document.getElementById('bodyAlmacen');
   const vacio = document.getElementById('almacenVacio');
   const label = document.getElementById('totalValorAlmacenLabel');
   if (!body) return;
+
+  // Construir mapa de materiales del catálogo para obtener desc/ud/coste_ud
+  const matMap = {};
+  MAT_MAESTRO.forEach(m => { matMap[m.cod] = m; });
+
+  let stockSP = null;
+
+  // Intentar cargar stock de SharePoint
+  const haySP = typeof SPTelice !== 'undefined' && SPTelice.getStockProyecto &&
+                navigator.onLine && OBRA_ACTIVA;
+  if (haySP) {
+    try {
+      body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:12px;color:var(--text3);font-size:11px;">Cargando stock...</td></tr>';
+      stockSP = await SPTelice.getStockProyecto(OBRA_ACTIVA.codigo);
+    } catch(e) {
+      console.warn('No se pudo cargar stock SP:', e.message);
+    }
+  }
+
+  // Si no hay SP, usar cálculo local como fallback
+  const alm = {};
+  if (stockSP) {
+    Object.keys(stockSP).forEach(cod => {
+      const mat = matMap[cod] || {};
+      alm[cod] = {
+        cod, desc: mat.desc || cod, ud: mat.ud || '',
+        coste_ud: mat.coste_ud || 0,
+        recibido: stockSP[cod].entradas,
+        consumido: stockSP[cod].salidas,
+        saldo: stockSP[cod].disponible
+      };
+    });
+    // Añadir materiales del parte actual que aún no están en SP
+    state.materiales.forEach(m => {
+      if (!alm[m.cod]) alm[m.cod] = { cod:m.cod, desc:m.desc, ud:m.ud, coste_ud:m.coste_ud, recibido:0, consumido:0, saldo:0 };
+    });
+  } else {
+    // Fallback local
+    const almLocal = calcularAlmacen();
+    Object.assign(alm, almLocal);
+  }
+
   body.innerHTML = '';
-  const items = Object.values(alm).filter(a => a.recibido > 0 || a.consumido > 0)
+  const items = Object.values(alm)
+    .filter(a => a.recibido > 0 || a.consumido > 0)
     .sort((a,b) => b.saldo - a.saldo);
+
   if (items.length === 0) {
     vacio.style.display = 'block';
     if (label) label.textContent = '0,00 €';
@@ -3044,7 +3111,7 @@ function renderAlmacen() {
     tr.style.borderBottom = '1px solid var(--border)';
     tr.innerHTML = `
       <td style="padding:6px 8px;">
-        <div style="font-size:11px;font-weight:500;">${a.desc.replace('Suministro de ','').substring(0,42)}</div>
+        <div style="font-size:11px;font-weight:500;">${(a.desc||'').replace('Suministro de ','').substring(0,42)}</div>
         <div style="font-size:9px;color:var(--text3);font-family:var(--mono);">${a.cod}</div>
       </td>
       <td style="padding:6px 8px;text-align:center;color:var(--text3);">${a.ud}</td>
@@ -3058,6 +3125,10 @@ function renderAlmacen() {
   if (label) label.textContent = valorTotal.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const badge = document.getElementById('badgeAlmacen');
   if (badge) badge.textContent = items.filter(a => a.saldo > 0).length;
+  if (stockSP) {
+    const fuente = document.getElementById('almacenFuente');
+    if (fuente) fuente.textContent = '● SharePoint · stock compartido';
+  }
 }
 
 function onPersonaSelect() {
