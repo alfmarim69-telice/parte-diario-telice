@@ -1306,6 +1306,14 @@
             <input type="text" id="prod_pk_fin" placeholder="Ej: 12+680">
           </div>
         </div>
+
+        <!-- Bloque materiales consumidos (aparece si hay material en almacén) -->
+        <div id="prod_mat_wrap" style="display:none;margin-bottom:8px;border:1px solid var(--border2);border-radius:var(--r);padding:10px;background:var(--bg3);">
+          <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">
+            📦 Material consumido
+          </div>
+          <div id="prod_mat_lista"></div>
+        </div>
         <div class="add-form-actions">
           <button class="btn-confirm" onclick="addProduccion()">Confirmar</button>
           <button class="btn-cancel" onclick="toggleForm('formProduccion')">Cancelar</button>
@@ -3695,8 +3703,14 @@ function onPartidaChange() {
   const info = document.getElementById('prod_task_info');
   const taskDesc = document.getElementById('prod_task_desc');
   const udField = document.getElementById('prod_ud');
+  const matWrap = document.getElementById('prod_mat_wrap');
+  const matLista = document.getElementById('prod_mat_lista');
 
-  if (!opt || !opt.value) { info.style.display = 'none'; return; }
+  if (!opt || !opt.value) {
+    info.style.display = 'none';
+    matWrap.style.display = 'none';
+    return;
+  }
 
   let selData;
   try { selData = JSON.parse(opt.value); } catch(e) { return; }
@@ -3707,6 +3721,31 @@ function onPartidaChange() {
   info.style.display = 'block';
   taskDesc.innerHTML = `<strong>${partida.cod}</strong> · ${partida.cap || ''}`
     + `<br><span style="font-size:10px;color:var(--text3);">Precio venta: ${partida.pu.toFixed(4)} €/${partida.ud} · Medición ppto: ${partida.med.toLocaleString('es-ES')} ${partida.ud}</span>`;
+
+  // Mostrar bloque de material si hay material asociado en el catálogo
+  const material = getMaterialDePartida(partida.cod);
+  if (material) {
+    const disp = getDisponibleMat();
+    const disponible = disp[material.cod] ? disp[material.cod].disponible : 0;
+    matLista.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;">
+        <span style="flex:1;color:var(--text1);">${material.desc.replace('Suministro de ','')}</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3);min-width:60px;">
+          Disp: ${disponible.toLocaleString('es-ES',{maximumFractionDigits:2})} ${material.ud}
+        </span>
+        <input type="number" id="prod_mat_cant" min="0" step="0.01"
+          style="width:80px;padding:4px 6px;border:1px solid var(--border2);border-radius:4px;
+                 background:var(--bg2);color:var(--text1);font-size:12px;text-align:right;"
+          placeholder="0.00">
+        <span style="font-size:11px;color:var(--text3);">${material.ud}</span>
+      </div>
+      <div style="font-size:10px;color:var(--text3);margin-top:4px;font-style:italic;">
+        Deja en 0 si no has consumido material hoy
+      </div>`;
+    matWrap.style.display = 'block';
+  } else {
+    matWrap.style.display = 'none';
+  }
 }
 
 // Devuelve el material asociado a una partida de certificación (si tiene suministro ts asignado)
@@ -3728,13 +3767,17 @@ function addProduccion() {
   const cant = parseFloat(document.getElementById('prod_cant').value);
   if (!cant || cant <= 0) { showToast('Introduce la cantidad', 'error'); return; }
 
-  // ── Validación de suministro: partidas con material (ts) requieren stock disponible ──
+  // Leer cantidad de material consumido del input (puede ser 0)
   const material = getMaterialDePartida(partida.cod);
-  if (material) {
-    const disp = getDisponibleMat()[material.cod];
-    const disponible = disp ? disp.disponible : 0;
-    if (cant > disponible + 0.001) {
-      showToast(`No hay suministro suficiente de ${material.cod}. Disponible: ${disponible.toLocaleString('es-ES',{maximumFractionDigits:2})} ${material.ud}. Registra el material en la pestaña Materiales o verifica el almacén.`, 'error');
+  const matCantInput = document.getElementById('prod_mat_cant');
+  const cantMat = material && matCantInput ? (parseFloat(matCantInput.value) || 0) : 0;
+
+  // Validar stock si hay consumo
+  if (material && cantMat > 0) {
+    const disp = getDisponibleMat();
+    const disponible = disp[material.cod] ? disp[material.cod].disponible : 0;
+    if (cantMat > disponible + 0.001) {
+      showToast(`Stock insuficiente de ${material.cod}. Disponible: ${disponible.toLocaleString('es-ES',{maximumFractionDigits:2})} ${material.ud}`, 'error');
       return;
     }
   }
@@ -3758,25 +3801,42 @@ function addProduccion() {
     task_sum: partida.ts,
     cap: partida.cap,
     lugar, pk_ini, pk_fin,
-    mat_cod: material ? material.cod : null
+    mat_cod: material ? material.cod : null,
+    mat_cant: cantMat
   });
 
-  // ── Coste del material automático (1:1, consumido del almacén, imputado a la Task de ejecución) ──
-  if (material) {
-    const tEjec = partida.te || partida.task_ejec || '';
+  // Registrar consumo de material si hay cantidad
+  if (material && cantMat > 0) {
+    const tEjec = partida.te || '';
     const tInfo = TASKS.find(t => t.cod === tEjec);
-    const costeMat = Math.round(cant * (material.coste_ud || 0) * 100) / 100;
+    const costeMat = Math.round(cantMat * (material.coste_ud || 0) * 100) / 100;
+
+    // Añadir coste automático
     state.costes.push({
       task_cod: tEjec, task_desc: tInfo ? tInfo.desc : '',
       pct: 100, tipo: 'MAT', obs: 'Material de producción (automático)',
       personal_sel: [], maq_sel: [], sub_sel: [], otros_sel: [],
       mat_sel: [{ cod: material.cod, desc: material.desc, ud: material.ud,
-                  coste_ud: material.coste_ud, cant_consumida: cant, coste: costeMat }],
+                  coste_ud: material.coste_ud, cant_consumida: cantMat, coste: costeMat }],
       coste_mod: 0, coste_maq: 0, coste_mat: costeMat, coste_sub: 0, coste_otros: 0,
-      coste_real: costeMat,
-      _auto_prod: pid
+      coste_real: costeMat, _auto_prod: pid
     });
     renderCostes(); actualizarPctBar();
+
+    // Registrar SALIDA en SharePoint
+    if (typeof SPTelice !== 'undefined' && SPTelice.registrarMovimientoMaterial && navigator.onLine && OBRA_ACTIVA) {
+      const parteId = 'PROD_' + new Date().toISOString().split('T')[0] + '_' + (state.cuadrilla || 'SIN');
+      SPTelice.registrarMovimientoMaterial({
+        parteId: parteId,
+        proyecto: OBRA_ACTIVA.codigo,
+        codMaterial: material.cod,
+        codControl: tEjec || 0,
+        cantidad: cantMat,
+        tipo: 'SALIDA',
+        costeUnitario: material.coste_ud || 0
+      }).then(() => console.log('SALIDA producción SP:', material.cod, cantMat))
+        .catch(e => console.warn('Error SALIDA SP:', e.message));
+    }
   }
 
   renderProduccion();
@@ -3790,7 +3850,9 @@ function addProduccion() {
   document.getElementById('prod_pk_ini').value = '';
   document.getElementById('prod_pk_fin').value = '';
   document.getElementById('prod_task_info').style.display = 'none';
-  showToast(material ? 'Producción añadida ✓ (material imputado automáticamente)' : 'Producción añadida ✓', 'success');
+  document.getElementById('prod_mat_wrap').style.display = 'none';
+  if (matCantInput) matCantInput.value = '';
+  showToast(material && cantMat > 0 ? 'Producción añadida ✓ (material descontado del almacén)' : 'Producción añadida ✓', 'success');
 }
 
 function renderProduccion() {
