@@ -272,8 +272,12 @@ function transformar(DATOS, opts) {
   // 9) Maquinaria CORPORATIVA -> referencia compartida
   var maquinariaCorp = (DATOS.maquinaria || []).map(function (m) {
     return {
-      cod: m.Codigo || '', desc: m.Descripcion || '', categoria: m.Categoria || '',
-      coste_hora: num(m.CosteHora), coste_dia: num(m.CosteDia)
+      cod: m.Codigo || '', desc: m.Descripcion || '',
+      categoria: m.Categoria || '', tipo: m.Categoria || 'MAQ',
+      prov: m.Observaciones || '',
+      ch: num(m.CosteHora), cd: num(m.CosteDia),
+      coste_hora: num(m.CosteHora), coste_dia: num(m.CosteDia),
+      ud: num(m.CosteDia) ? 'día' : 'h'
     };
   });
 
