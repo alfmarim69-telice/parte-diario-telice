@@ -3826,7 +3826,7 @@ function renderProduccion() {
 // ═══════════════════════════════════════════
 function onTaskChange() { calcularCostePreview(); }
 
-function addCoste() {
+async function addCoste() {
   const taskCod = document.getElementById('cost_task').value;
   if (!taskCod) { showToast('Selecciona una Task', 'error'); return; }
 
@@ -3869,10 +3869,33 @@ function addCoste() {
   if (tipo_val === 'MAT') {
     const consumos = recogerConsumoMat();
     if (consumos.length === 0) { showToast('Indica la cantidad consumida de algún material', 'error'); return; }
-    const disp = getDisponibleMat();
+
+    // Validar contra stock SP si disponible, si no usar stock local
+    const haySP = typeof SPTelice !== 'undefined' && SPTelice.getStockMaterial && navigator.onLine && OBRA_ACTIVA;
     for (const c of consumos) {
-      if (!disp[c.cod] || c.cant_consumida > disp[c.cod].disponible + 0.001) {
-        showToast(`Stock insuficiente de ${c.cod}: disponible ${disp[c.cod] ? disp[c.cod].disponible : 0}`, 'error'); return;
+      if (c.cant_consumida <= 0) continue;
+      let disponible = 0;
+      if (haySP) {
+        try {
+          const stock = await SPTelice.getStockMaterial(OBRA_ACTIVA.codigo, c.cod);
+          // Restar consumos ya introducidos en este parte (aún no enviados a SP)
+          const yaConsumido = state.costes.filter(x => x.tipo === 'MAT')
+            .flatMap(x => x.mat_sel || [])
+            .filter(x => x.cod === c.cod)
+            .reduce((s, x) => s + (x.cant_consumida || 0), 0);
+          disponible = stock.disponible - yaConsumido;
+        } catch(e) {
+          // Fallback local si SP falla
+          const disp = getDisponibleMat();
+          disponible = disp[c.cod] ? disp[c.cod].disponible : 0;
+        }
+      } else {
+        const disp = getDisponibleMat();
+        disponible = disp[c.cod] ? disp[c.cod].disponible : 0;
+      }
+      if (c.cant_consumida > disponible + 0.001) {
+        showToast(`Stock insuficiente de ${c.cod}: disponible ${disponible.toLocaleString('es-ES', {maximumFractionDigits:3})} ${c.ud||''}`, 'error');
+        return;
       }
     }
   }
@@ -3932,6 +3955,30 @@ function addCoste() {
     personal_sel: personalSel, maq_sel: maqSel, mat_sel: matSel, sub_sel: subSel, otros_sel: otrosSel,
     coste_mod: costeMOD, coste_maq: costeMAQ, coste_mat: costeMAT, coste_sub: costeSUB, coste_otros: costeOTROS, coste_real: costeReal
   });
+
+  // Registrar SALIDAs en SharePoint si es tipo MAT
+  if (tipo === 'MAT' && matSel.length > 0 &&
+      typeof SPTelice !== 'undefined' && SPTelice.registrarMovimientoMaterial &&
+      navigator.onLine && OBRA_ACTIVA) {
+    const parteId = 'BORRADOR_' + new Date().toISOString().split('T')[0] + '_' + (state.cuadrilla || 'SIN') + '_SALIDA';
+    matSel.forEach(function(m) {
+      if (!m.cant_consumida || m.cant_consumida <= 0) return;
+      const matDato = MAT_MAESTRO.find(x => x.cod === m.cod) || {};
+      SPTelice.registrarMovimientoMaterial({
+        parteId: parteId,
+        proyecto: OBRA_ACTIVA.codigo,
+        codMaterial: m.cod,
+        codControl: taskCod || 0,
+        cantidad: m.cant_consumida,
+        tipo: 'SALIDA',
+        costeUnitario: m.coste_ud || matDato.coste_ud || 0
+      }).then(() => {
+        console.log('SALIDA registrada en SP:', m.cod, m.cant_consumida);
+      }).catch(e => {
+        console.warn('Error registrando SALIDA SP:', e.message);
+      });
+    });
+  }
   renderCostes();
   actualizarPctBar();
   actualizarBadges();
