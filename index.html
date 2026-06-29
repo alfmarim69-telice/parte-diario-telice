@@ -3755,7 +3755,7 @@ function getMaterialDePartida(cod) {
   return MAT_MAESTRO.find(m => m.cod === cod) || null;  // material con el mismo código (1:1)
 }
 
-function addProduccion() {
+async function addProduccion() {
   const selPart = document.getElementById('prod_partida');
   if (!selPart.value) { showToast('Selecciona una partida', 'error'); return; }
 
@@ -3767,15 +3767,31 @@ function addProduccion() {
   const cant = parseFloat(document.getElementById('prod_cant').value);
   if (!cant || cant <= 0) { showToast('Introduce la cantidad', 'error'); return; }
 
-  // Leer cantidad de material consumido del input (puede ser 0)
   const material = getMaterialDePartida(partida.cod);
   const matCantInput = document.getElementById('prod_mat_cant');
-  const cantMat = material && matCantInput ? (parseFloat(matCantInput.value) || 0) : 0;
+  const cantMat = material && matCantInput && document.getElementById('prod_mat_wrap').style.display !== 'none'
+    ? (parseFloat(matCantInput.value) || 0) : 0;
 
-  // Validar stock si hay consumo
+  // Validar stock si hay material y cantidad consumida
   if (material && cantMat > 0) {
-    const disp = getDisponibleMat();
-    const disponible = disp[material.cod] ? disp[material.cod].disponible : 0;
+    let disponible = 0;
+    const haySP = typeof SPTelice !== 'undefined' && SPTelice.getStockMaterial && navigator.onLine && OBRA_ACTIVA;
+    if (haySP) {
+      try {
+        const stock = await SPTelice.getStockMaterial(OBRA_ACTIVA.codigo, material.cod);
+        // Restar consumos ya registrados en este parte (aún no en SP)
+        const yaConsumido = state.costes
+          .filter(c => c.tipo === 'MAT')
+          .flatMap(c => c.mat_sel || [])
+          .filter(m => m.cod === material.cod)
+          .reduce((s, m) => s + (m.cant_consumida || 0), 0);
+        disponible = stock.disponible - yaConsumido;
+      } catch(e) {
+        disponible = (getDisponibleMat()[material.cod] || {disponible:0}).disponible;
+      }
+    } else {
+      disponible = (getDisponibleMat()[material.cod] || {disponible:0}).disponible;
+    }
     if (cantMat > disponible + 0.001) {
       showToast(`Stock insuficiente de ${material.cod}. Disponible: ${disponible.toLocaleString('es-ES',{maximumFractionDigits:2})} ${material.ud}`, 'error');
       return;
@@ -3805,13 +3821,12 @@ function addProduccion() {
     mat_cant: cantMat
   });
 
-  // Registrar consumo de material si hay cantidad
+  // Registrar consumo de material si hay cantidad > 0
   if (material && cantMat > 0) {
     const tEjec = partida.te || '';
     const tInfo = TASKS.find(t => t.cod === tEjec);
     const costeMat = Math.round(cantMat * (material.coste_ud || 0) * 100) / 100;
 
-    // Añadir coste automático
     state.costes.push({
       task_cod: tEjec, task_desc: tInfo ? tInfo.desc : '',
       pct: 100, tipo: 'MAT', obs: 'Material de producción (automático)',
