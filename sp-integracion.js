@@ -283,7 +283,7 @@ async function buildMatBody(fm, clave, campos) {
 // Puebla M_Materiales desde M_Partidas si está vacía para el proyecto dado.
 async function inicializarMateriales(proyecto, partidas) {
   var todos = await spGet(
-    "/lists/GetByTitle('M_Materiales')/items?$top=5000&$select=Id,Proyecto"
+    "/lists/GetByTitle('M_Materiales')/items?$top=5000&$select=Id,field_1
   );
   var existentes = (todos.value || []).filter(function(x) {
     return (x.Proyecto || '') === proyecto;
