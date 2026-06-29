@@ -1044,9 +1044,26 @@
         </div>
         <div class="field col-1" style="margin-bottom:8px;">
           <label>📷 Foto del albarán (opcional)</label>
-          <input type="file" id="mat_foto" accept="image/*" capture="environment"
-            onchange="onMatFotoChange(this)"
-            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text2);font-family:var(--font);font-size:12px;padding:7px 8px;">
+          <div style="display:flex;gap:8px;margin-top:4px;">
+            <button type="button" onclick="document.getElementById('mat_foto_camara').click()"
+              style="flex:1;padding:8px;background:var(--bg3);border:1px solid var(--border2);
+                     border-radius:var(--r);color:var(--text2);font-size:12px;cursor:pointer;
+                     display:flex;align-items:center;justify-content:center;gap:6px;">
+              📷 Sacar foto
+            </button>
+            <button type="button" onclick="document.getElementById('mat_foto_galeria').click()"
+              style="flex:1;padding:8px;background:var(--bg3);border:1px solid var(--border2);
+                     border-radius:var(--r);color:var(--text2);font-size:12px;cursor:pointer;
+                     display:flex;align-items:center;justify-content:center;gap:6px;">
+              🖼 Galería
+            </button>
+          </div>
+          <!-- input oculto: cámara -->
+          <input type="file" id="mat_foto_camara" accept="image/*" capture="environment"
+            onchange="onMatFotoChange(this)" style="display:none;">
+          <!-- input oculto: galería -->
+          <input type="file" id="mat_foto_galeria" accept="image/*"
+            onchange="onMatFotoChange(this)" style="display:none;">
           <div id="mat_foto_preview" style="display:none;margin-top:6px;">
             <img id="mat_foto_img" style="max-width:100%;max-height:160px;border-radius:6px;border:1px solid var(--border);">
             <button type="button" onclick="quitarMatFoto()" style="display:block;margin-top:4px;background:none;border:none;color:var(--red);font-size:11px;cursor:pointer;padding:0;">✕ Quitar foto</button>
@@ -2201,7 +2218,8 @@ function onMatFotoChange(input) {
 
 function quitarMatFoto() {
   _matFotoData = null;
-  document.getElementById('mat_foto').value = '';
+  document.getElementById('mat_foto_camara').value = '';
+  document.getElementById('mat_foto_galeria').value = '';
   document.getElementById('mat_foto_preview').style.display = 'none';
 }
 
