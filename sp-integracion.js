@@ -449,7 +449,202 @@ global.SPTelice = {
   deleteMaterial: deleteMaterial,
   registrarMovimientoMaterial: registrarMovimientoMaterial,
   getStockMaterial: getStockMaterial,
-  getStockProyecto: getStockProyecto
+  getStockProyecto: getStockProyecto,
+  guardarParteEnSP: guardarParteEnSP
 };
 
 })(window);
+
+// ═══════════════════════════════════════════════════════
+// GUARDADO COMPLETO DEL PARTE EN SHAREPOINT
+// ═══════════════════════════════════════════════════════
+
+// Mapas de nombres internos para cada lista de partes
+var PARTE_MAPS = {
+  Partes: {
+    ParteId:'field_1', Proyecto:'field_2', Fecha:'field_3', Semana:'field_4',
+    Responsable:'field_5', Cuadrilla:'field_6', UnidadProductiva:'field_7',
+    Estado:'field_8', Meteorologia:'field_9', Lugar:'field_10', Observaciones:'field_11',
+    HoraEntrada:'HoraEntrada', HoraParada:'HoraParada', HoraReinicio:'HoraReinicio',
+    HoraSalida:'HoraSalida', InicioFranja:'InicioFranja', FinFranja:'FinFranja',
+    NumAutorizacion:'NumAutorizacion', Provincia:'Provincia', PKLugar:'PKLugar'
+  },
+  PartePersonal: {
+    ParteId:'field_1', Proyecto:'field_2', NumPersonal:'field_3', CodControl:'field_4',
+    Horas:'field_5', Dieta:'field_6', Km:'field_7',
+    CosteJornada:'CosteJornada', Tipo:'Tipo', Nombre:'Nombre'
+  },
+  ParteMaquinaria: {
+    ParteId:'field_1', Proyecto:'field_2', CodMaquina:'field_3', CodControl:'field_4',
+    Horas:'field_5', CosteHora:'CosteHora', CosteTotal:'CosteTotal', Proveedor:'Proveedor'
+  },
+  ParteMOExterna: {
+    ParteId:'field_1', Proyecto:'field_2', CodPerfil:'field_3', CodControl:'field_4',
+    Horas:'field_5', Importe:'field_6', Empresa:'Empresa', TarifaHora:'TarifaHora'
+  },
+  ParteOtros: {
+    ParteId:'field_1', Proyecto:'field_2', CodControl:'field_3', Concepto:'field_4',
+    Importe:'field_5', Observaciones:'field_6'
+  },
+  ParteSubcontratas: {
+    ParteId:'field_1', Proyecto:'field_2', CodControl:'field_3', Empresa:'field_4',
+    Cantidad:'field_5', Importe:'field_6',
+    CodPartida:'CodPartida', Ud:'Ud', Tarifa:'Tarifa',
+    PKInicio:'PKInicio', PKFinal:'PKFinal', Contrato:'Contrato'
+  },
+  ParteProduccion: {
+    ParteId:'field_1', Proyecto:'field_2', CodProduccion:'field_3', Cantidad:'field_4',
+    Observaciones:'field_5', Importe:'Importe', Ud:'Ud',
+    PKInicio:'PKInicio', PKFinal:'PKFinal', Lugar:'Lugar', TaskBC:'TaskBC'
+  },
+  ParteAlquileres: {
+    ParteId:'field_1', Proyecto:'field_2', CodRef:'field_3', CodControl:'field_4',
+    Horas:'field_5', Importe:'field_6', Descripcion:'Descripcion', CosteHora:'CosteHora'
+  }
+};
+
+function buildParteBody(listName, clave, campos) {
+  var fm = PARTE_MAPS[listName] || {};
+  var body = { Title: clave };
+  Object.keys(campos).forEach(function(col) {
+    var internal = fm[col] || col;
+    if (campos[col] !== undefined && campos[col] !== null) {
+      body[internal] = campos[col];
+    }
+  });
+  return body;
+}
+
+async function guardarParteEnSP(parte) {
+  var parteId = parte._id ? String(parte._id) : String(Date.now());
+  var proy    = parte.cabecera.proyecto || '';
+  var clave   = proy + '|' + parteId;
+  var errores = [];
+
+  // 1) Cabecera
+  try {
+    var cab = parte.cabecera;
+    var body = buildParteBody('Partes', clave, {
+      ParteId: parteId, Proyecto: proy,
+      Fecha: cab.fecha || '', Semana: cab.semana || 0,
+      Responsable: cab.responsable || '', Cuadrilla: cab.cuadrilla || '',
+      UnidadProductiva: cab.unidad_prod || '', Estado: cab.estado || 'Enviado',
+      Meteorologia: cab.meteo || '', Lugar: cab.lugar || '',
+      Observaciones: cab.obs || '',
+      HoraEntrada: cab.hora_entrada || '', HoraParada: cab.hora_parada || '',
+      HoraReinicio: cab.hora_reinicio || '', HoraSalida: cab.hora_salida || '',
+      InicioFranja: cab.franja_ini || '', FinFranja: cab.franja_fin || '',
+      NumAutorizacion: cab.num_autorizacion || '',
+      Provincia: cab.provincia || '', PKLugar: cab.pk_lugar || ''
+    });
+    await spPost('Partes', body);
+  } catch(e) { errores.push('Partes: ' + e.message); }
+
+  // 2) Personal
+  for (var i = 0; i < (parte.personal || []).length; i++) {
+    var p = parte.personal[i];
+    try {
+      await spPost('PartePersonal', buildParteBody('PartePersonal',
+        clave + '|P' + i, {
+          ParteId: parteId, Proyecto: proy,
+          NumPersonal: p.num || p.id || 0,
+          CodControl: p.task_cod || 0,
+          Horas: p.horas || 0, Dieta: p.dieta || 'sin_dieta',
+          Km: p.km || 0, CosteJornada: p.coste_jornada || 0,
+          Tipo: p.tipo || '', Nombre: p.nombre || ''
+        }));
+    } catch(e) { errores.push('Personal[' + i + ']: ' + e.message); }
+  }
+
+  // 3) Maquinaria
+  for (var i = 0; i < (parte.maquinaria || []).length; i++) {
+    var m = parte.maquinaria[i];
+    try {
+      await spPost('ParteMaquinaria', buildParteBody('ParteMaquinaria',
+        clave + '|M' + i, {
+          ParteId: parteId, Proyecto: proy,
+          CodMaquina: m.cod || '', CodControl: m.task_cod || 0,
+          Horas: m.horas || 0, CosteHora: m.ch || 0,
+          CosteTotal: m.coste_total || 0, Proveedor: m.prov || ''
+        }));
+    } catch(e) { errores.push('Maquinaria[' + i + ']: ' + e.message); }
+  }
+
+  // 4) MO Externa
+  for (var i = 0; i < (parte.mo_externa || []).length; i++) {
+    var m = parte.mo_externa[i];
+    try {
+      await spPost('ParteMOExterna', buildParteBody('ParteMOExterna',
+        clave + '|MOE' + i, {
+          ParteId: parteId, Proyecto: proy,
+          CodPerfil: m.cod || '', CodControl: m.task_cod || 0,
+          Horas: m.horas || 0, Importe: m.importe || 0,
+          Empresa: m.empresa || '', TarifaHora: m.tarifa || 0
+        }));
+    } catch(e) { errores.push('MOExterna[' + i + ']: ' + e.message); }
+  }
+
+  // 5) Subcontratas
+  for (var i = 0; i < (parte.subcontratas || []).length; i++) {
+    var s = parte.subcontratas[i];
+    try {
+      await spPost('ParteSubcontratas', buildParteBody('ParteSubcontratas',
+        clave + '|S' + i, {
+          ParteId: parteId, Proyecto: proy,
+          CodControl: s.task || 0, Empresa: s.empresa || '',
+          Cantidad: s.cant || 0, Importe: s.coste_total || 0,
+          CodPartida: s.cod || '', Ud: s.ud || '',
+          Tarifa: s.tarifa || 0, PKInicio: s.pk_ini || '',
+          PKFinal: s.pk_fin || '', Contrato: s.contrato || ''
+        }));
+    } catch(e) { errores.push('Subcontratas[' + i + ']: ' + e.message); }
+  }
+
+  // 6) Producción
+  for (var i = 0; i < (parte.produccion || []).length; i++) {
+    var pr = parte.produccion[i];
+    try {
+      await spPost('ParteProduccion', buildParteBody('ParteProduccion',
+        clave + '|PR' + i, {
+          ParteId: parteId, Proyecto: proy,
+          CodProduccion: pr.partida_cod || '',
+          Cantidad: pr.cant || 0, Importe: pr.importe || 0,
+          Ud: pr.ud || '', PKInicio: pr.pk_ini || '',
+          PKFinal: pr.pk_fin || '', Lugar: pr.lugar || '',
+          TaskBC: pr.task_grupo || '',
+          Observaciones: ''
+        }));
+    } catch(e) { errores.push('Produccion[' + i + ']: ' + e.message); }
+  }
+
+  // 7) Alquileres
+  for (var i = 0; i < (parte.alquileres || []).length; i++) {
+    var a = parte.alquileres[i];
+    try {
+      await spPost('ParteAlquileres', buildParteBody('ParteAlquileres',
+        clave + '|A' + i, {
+          ParteId: parteId, Proyecto: proy,
+          CodRef: a.cod || '', CodControl: a.task_cod || 0,
+          Horas: a.horas || 0, Importe: a.coste_total || 0,
+          Descripcion: a.desc || '', CosteHora: a.ch || 0
+        }));
+    } catch(e) { errores.push('Alquileres[' + i + ']: ' + e.message); }
+  }
+
+  // 8) Otros conceptos
+  for (var i = 0; i < (parte.otros || []).length; i++) {
+    var o = parte.otros[i];
+    try {
+      await spPost('ParteOtros', buildParteBody('ParteOtros',
+        clave + '|O' + i, {
+          ParteId: parteId, Proyecto: proy,
+          CodControl: o.task_cod || 0,
+          Concepto: o.concepto || o.obs || '',
+          Importe: o.importe || o.coste_otros || 0,
+          Observaciones: o.obs || ''
+        }));
+    } catch(e) { errores.push('Otros[' + i + ']: ' + e.message); }
+  }
+
+  return { parteId, errores, ok: errores.length === 0 };
+}
