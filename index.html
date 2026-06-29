@@ -4533,7 +4533,7 @@ function completarCostes(id) {
   showToast('Completa los costes y valida el parte', 'success');
 }
 
-function enviarParte() {
+async function enviarParte() {
   const c = getCabecera();
   if (!c.fecha) { showToast('Introduce la fecha', 'error'); return; }
   if (!c.responsable) { showToast('Introduce el responsable', 'error'); return; }
@@ -4543,35 +4543,55 @@ function enviarParte() {
     personal: state.personal,
     maquinaria: state.maquinaria,
     materiales: state.materiales,
+    mo_externa: state.mo_externa || [],
     subcontratas: state.subcontratas,
     otros: state.otros,
+    alquileres: state.alquileres || [],
     produccion: state.produccion,
     costes: state.costes,
     _guardado: new Date().toISOString(),
     _enviado: false
   };
 
-  // Guardar en historial local
-  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   parte._id = Date.now();
+
+  // Guardar en localStorage como caché
+  const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
   hist.unshift(parte);
   localStorage.setItem('telice_historial', JSON.stringify(hist.slice(0, 50)));
   localStorage.removeItem('telice_borrador');
 
-  // Intentar sincronizar si hay red
-  if (navigator.onLine) {
-    parte._enviado = true;
-    hist[0]._enviado = true;
-    localStorage.setItem('telice_historial', JSON.stringify(hist));
-    showToast('Parte enviado y sincronizado ✓', 'success');
+  // Guardar en SharePoint
+  if (navigator.onLine && typeof SPTelice !== 'undefined' && SPTelice.guardarParteEnSP) {
+    showToast('Guardando en SharePoint...', '');
+    try {
+      const res = await SPTelice.guardarParteEnSP(parte);
+      if (res.ok) {
+        parte._enviado = true;
+        parte._sp_parteId = res.parteId;
+        hist[0]._enviado = true;
+        hist[0]._sp_parteId = res.parteId;
+        localStorage.setItem('telice_historial', JSON.stringify(hist));
+        showToast('Parte enviado y guardado en SharePoint ✓', 'success');
+      } else {
+        showToast('Guardado localmente. Errores SP: ' + res.errores.join(', '), 'error');
+        console.warn('Errores SP:', res.errores);
+      }
+    } catch(e) {
+      showToast('Guardado localmente. Error SP: ' + e.message, 'error');
+      console.warn('Error SP:', e);
+    }
   } else {
-    showToast('Guardado. Se sincronizará cuando haya red.', 'success');
+    showToast('Guardado localmente. Se sincronizará cuando haya red.', 'success');
   }
 
   // Resetear estado
-  state = { personal: [], maquinaria: [], materiales: [], subcontratas: [], otros: [], produccion: [], costes: [], indirectos: [] };
+  state = { personal: [], maquinaria: [], materiales: [], subcontratas: [],
+            otros: [], produccion: [], costes: [], indirectos: [],
+            mo_externa: [], alquileres: [] };
   renderAlmacen();
-  renderPersonal(); renderMaquinaria(); renderMateriales(); renderSubcontratas(); renderOtros(); renderProduccion(); renderCostes();
+  renderPersonal(); renderMaquinaria(); renderMateriales();
+  renderSubcontratas(); renderOtros(); renderProduccion(); renderCostes();
   actualizarBadges();
   actualizarHistorial();
   showTab('historial');
