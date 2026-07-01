@@ -579,11 +579,8 @@
         </div>
         <div class="field">
           <label>Estado</label>
-          <select id="estado">
-            <option value="borrador">Borrador</option>
-            <option value="enviado">Enviado</option>
-            <option value="procesado">Procesado</option>
-          </select>
+          <span id="estadoBadge" title="Se calcula automáticamente según el flujo del parte"
+            style="display:flex;align-items:center;justify-content:center;padding:8px 10px;border-radius:4px;font-size:12px;font-weight:600;background:var(--bg4);color:var(--text3);border:1px solid var(--border);">Borrador</span>
         </div>
       </div>
       <div class="field-grid" style="margin-bottom:10px;">
@@ -1806,6 +1803,7 @@ document.addEventListener('DOMContentLoaded', () => {
   actualizarBadges();
   checkOnline();
   aplicarRol();
+  actualizarEstadoBadge();
   if (window.activarBuscadores) activarBuscadores();
   // Cargar datos (SharePoint con fallback local) y luego la primera obra
   inicializarDatos(msg => {
@@ -4235,7 +4233,7 @@ function getCabecera() {
     responsable: document.getElementById('responsable').value,
     cuadrilla: document.getElementById('cuadrilla').value,
     unidad: document.getElementById('unidad').value,
-    estado: document.getElementById('estado').value,
+    estado: calcularEstadoAutomatico(),
     horaEntrada: document.getElementById('horaEntrada').value,
     horaParada: document.getElementById('horaParada').value,
     horaReinicio: document.getElementById('horaReinicio').value,
@@ -4450,9 +4448,35 @@ function resetEstado() {
   renderPersonal(); renderMaquinaria(); renderAlquileres(); renderMOExterna(); renderMateriales(); renderSubcontratas(); renderOtros(); renderProduccion(); renderCostes(); renderIndirectos();
   renderAlmacen();
   _parteEnEdicion = null;
+  actualizarEstadoBadge();
 }
 
 let _parteEnEdicion = null;
+
+// ── Estado automático de la cabecera (ya no se fija a mano) ───
+// Traduce el estado interno de flujo de trabajo (_estado: borrador /
+// pendiente_costes / validado / devuelto) a las 3 categorías históricas
+// que se guardan en cabecera.estado y se muestran en la insignia.
+function calcularEstadoAutomatico() {
+  const est = _parteEnEdicion && _parteEnEdicion._estado;
+  if (est === 'validado') return 'procesado';
+  if (est === 'pendiente_costes' || est === 'devuelto') return 'enviado';
+  return 'borrador';
+}
+
+function actualizarEstadoBadge() {
+  const el = document.getElementById('estadoBadge');
+  if (!el) return;
+  const ESTILOS = {
+    borrador:  { t: 'Borrador',  bg: 'var(--bg4)',    c: 'var(--text3)' },
+    enviado:   { t: 'Enviado',   bg: '#FFF3E0',        c: '#E65100' },
+    procesado: { t: 'Procesado', bg: 'var(--green2)',  c: 'var(--green)' }
+  };
+  const s = ESTILOS[calcularEstadoAutomatico()];
+  el.textContent = s.t;
+  el.style.background = s.bg;
+  el.style.color = s.c;
+}
 
 function reexportarParte(id) {
   const hist = JSON.parse(localStorage.getItem('telice_historial') || '[]');
@@ -4468,6 +4492,7 @@ function editarParte(id) {
   if (!confirm('Se recuperará este parte en el formulario para editarlo. Al volver a enviarlo se actualizará (no se duplica). ¿Continuar?')) return;
 
   _parteEnEdicion = parte; // conserva el _id para actualizar al reenviar
+  actualizarEstadoBadge();
   setCabecera(parte.cabecera);
   state.personal     = parte.personal     || [];
   state.maquinaria   = parte.maquinaria   || [];
@@ -4528,6 +4553,7 @@ function completarCostes(id) {
   const parte = hist.find(p => p._id === id);
   if (!parte) return;
   _parteEnEdicion = parte;
+  actualizarEstadoBadge();
   // Cargar datos del encargado en el estado
   setCabecera(parte.cabecera);
   state.personal     = parte.personal     || [];
@@ -5685,6 +5711,11 @@ function exportarExcel() {
   // sigue siendo siempre claro y legible, igual que el resto de combos.
   const FONDO_OSCURO = ['obraSelector'];
 
+  // Selects con pocas opciones fijas que no necesitan caja de búsqueda:
+  // se muestran como un simple botón desplegable, sin cursor de texto
+  // ni teclado en pantalla, evitando el aspecto "raro" de un input editable.
+  const SIN_BUSCADOR = ['obraSelector'];
+
   function inyectarEstilos(){
     if(document.getElementById('combo-buscable-css')) return;
     const css = document.createElement('style');
@@ -5702,10 +5733,15 @@ function exportarExcel() {
         padding: 8px 28px 8px 10px;
         width: 100%;
         cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
         background-repeat: no-repeat;
         background-position: right 8px center;
       }
+      .combo-wrap .combo-input.combo-boton { cursor: pointer; }
+      .combo-wrap .combo-input.combo-boton:focus { cursor: pointer; }
       .combo-wrap .combo-input:focus { outline:none; border-color: var(--accent); cursor:text; }
       .combo-wrap.combo-open .combo-input { border-radius:4px 4px 0 0; border-color:var(--accent); }
       .combo-wrap .combo-input.invertido {
@@ -5812,6 +5848,11 @@ function exportarExcel() {
     return (opt && opt.value !== '') ? opt.textContent : '';
   }
 
+  function fijarTexto(el, texto){
+    if(el.tagName === 'INPUT') el.value = texto;
+    else el.textContent = texto || '\u00A0';
+  }
+
   function construirCombo(sel){
     inyectarEstilos();
 
@@ -5821,15 +5862,19 @@ function exportarExcel() {
     sel.parentNode.insertBefore(wrap, sel);
     wrap.appendChild(sel);
 
-    const input = document.createElement('input');
-    input.type = 'text';
+    const buscable = !SIN_BUSCADOR.includes(sel.id);
+    const input = document.createElement(buscable ? 'input' : 'div');
     input.className = 'combo-input';
+    if(!buscable) { input.classList.add('combo-boton'); input.tabIndex = 0; input.setAttribute('role','button'); }
     if(FONDO_OSCURO.includes(sel.id)) input.classList.add('invertido');
-    input.autocomplete = 'off';
-    input.setAttribute('inputmode','search');
-    input.placeholder = '🔍 Buscar / seleccionar…';
+    if(buscable){
+      input.type = 'text';
+      input.autocomplete = 'off';
+      input.setAttribute('inputmode','search');
+      input.placeholder = '🔍 Buscar / seleccionar…';
+    }
     if(sel.title) input.title = sel.title;
-    input.value = etiquetaSeleccionActual(sel);
+    fijarTexto(input, etiquetaSeleccionActual(sel));
     wrap.appendChild(input);
 
     // El panel se ancla al body (position:fixed) para no quedar recortado
@@ -5852,20 +5897,20 @@ function exportarExcel() {
       panel.classList.add('open');
       posicionarPanel();
       filtrar(panel, '');
-      input.select();
+      if(buscable) input.select();
       const actual = panel.querySelector('.combo-option.seleccionada');
       if(actual) actual.scrollIntoView({block:'nearest'});
     }
     function cerrarPanel(){
       wrap.classList.remove('combo-open');
       panel.classList.remove('open');
-      input.value = etiquetaSeleccionActual(sel);
+      fijarTexto(input, etiquetaSeleccionActual(sel));
     }
 
     function elegir(valor, texto){
       const nativeSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;
       nativeSetter.call(sel, valor);
-      input.value = texto;
+      fijarTexto(input, texto);
       (panel._opciones||[]).forEach(o=> o.classList.toggle('seleccionada', o.dataset.value === valor));
       sel.dispatchEvent(new Event('change', {bubbles:true}));
       cerrarPanel();
@@ -5878,17 +5923,27 @@ function exportarExcel() {
       elegir(opt.dataset.value, opt.textContent);
     });
 
-    input.addEventListener('focus', abrirPanel);
-    input.addEventListener('click', ()=>{ if(!panel.classList.contains('open')) abrirPanel(); });
-    input.addEventListener('input', ()=> filtrar(panel, input.value));
-    input.addEventListener('keydown', e=>{
-      if(e.key === 'Escape'){ input.blur(); }
-      else if(e.key === 'Enter'){
-        e.preventDefault();
-        const visibles = (panel._opciones||[]).filter(o=>!o.hidden);
-        if(visibles.length === 1) elegir(visibles[0].dataset.value, visibles[0].textContent);
-      }
-    });
+    if(buscable){
+      input.addEventListener('focus', abrirPanel);
+      input.addEventListener('click', ()=>{ if(!panel.classList.contains('open')) abrirPanel(); });
+      input.addEventListener('input', ()=> filtrar(panel, input.value));
+      input.addEventListener('keydown', e=>{
+        if(e.key === 'Escape'){ input.blur(); }
+        else if(e.key === 'Enter'){
+          e.preventDefault();
+          const visibles = (panel._opciones||[]).filter(o=>!o.hidden);
+          if(visibles.length === 1) elegir(visibles[0].dataset.value, visibles[0].textContent);
+        }
+      });
+    } else {
+      // Variante botón: solo click/teclado alternan abrir-cerrar (sin autoabrir al enfocar,
+      // para que un click no lo abra y cierre a la vez)
+      input.addEventListener('click', ()=>{ panel.classList.contains('open') ? cerrarPanel() : abrirPanel(); });
+      input.addEventListener('keydown', e=>{
+        if(e.key === 'Escape'){ input.blur(); }
+        else if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); panel.classList.contains('open') ? cerrarPanel() : abrirPanel(); }
+      });
+    }
     input.addEventListener('blur', ()=> setTimeout(cerrarPanel, 120));
 
     window.addEventListener('scroll', ()=>{ if(panel.classList.contains('open')) cerrarPanel(); }, true);
@@ -5898,7 +5953,7 @@ function exportarExcel() {
     const nativeDesc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
     Object.defineProperty(sel, 'value', {
       get(){ return nativeDesc.get.call(sel); },
-      set(v){ nativeDesc.set.call(sel, v); input.value = etiquetaSeleccionActual(sel); },
+      set(v){ nativeDesc.set.call(sel, v); fijarTexto(input, etiquetaSeleccionActual(sel)); },
       configurable:true
     });
 
@@ -5910,7 +5965,7 @@ function exportarExcel() {
     const refs = sel._comboRefs;
     if(!refs) return;
     construirOpciones(sel, refs.panel);
-    refs.input.value = etiquetaSeleccionActual(sel);
+    fijarTexto(refs.input, etiquetaSeleccionActual(sel));
   }
 
   // Exponer función para (re)activar tras repoblar (por si se regeneran options)
