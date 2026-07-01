@@ -229,9 +229,6 @@ async function login() {
   spinner.classList.add('show');
 
   try {
-    // Buscar usuario en M_Personal por LoginUsuario
-    // sp-integracion.js expone spReadAll(listName) o similar
-    // Usamos fetch directo contra SP con el token de MSAL
     const resultado = await buscarUsuarioEnSP(usuario, password);
 
     if (!resultado) {
@@ -258,11 +255,7 @@ async function login() {
   }
 }
 
-/**
- * Consulta M_Personal en SharePoint buscando el registro con
- * LoginUsuario = usuario Y LoginPassword = password.
- * Devuelve el objeto usuario o null si no existe.
- */
+/** Valida credenciales contra la lista Usuarios en SharePoint. */
 async function buscarUsuarioEnSP(usuario, password) {
   // 1. Autenticar con MSAL (necesario para leer SharePoint)
   await SPTelice.ensureReady();
