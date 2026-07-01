@@ -1,259 +1,253 @@
 """
-cargar_costes_sp.py
-───────────────────
-Lee el Excel Maestro de Obra y actualiza la lista M_Partidas en SharePoint
-añadiendo los campos CosteUd (coste unitario) y CosteTot (coste total).
+cargar_costes_sp.py  —  v2 (unificado)
+───────────────────────────────────────
+Actualiza DOS listas de SharePoint con los valores económicos del Excel Maestro:
+
+  1. M_Partidas (Producción)
+     Escribe: CosteUd (col K) y CosteTot (col AC)
+
+  2. M_PartidasControl (Control)
+     Escribe: field_4 (PrecioUd), field_5 (CosteUd),
+              field_6 (VentaTot), field_7 (CosteTot)
 
 PREREQUISITOS:
   pip install openpyxl msal requests --break-system-packages
 
-CONFIGURACIÓN (rellenar antes de ejecutar):
-  - CLIENT_ID, TENANT_ID: del App Registration de Azure (los mismos que usa la app)
-  - SITE_URL: URL del sitio SharePoint donde está M_Partidas
-  - EXCEL_PATH: ruta al archivo Excel Maestro de Obra
-
-CAMPOS QUE ESCRIBE EN M_Partidas:
-  - CosteUd  → Coste UD Proyecto (col K del Excel)
-  - CosteTot → TOTAL Coste       (col AC del Excel)
-
-Si esos campos no existen en la lista, el script avisa y para.
-Créalos primero en SharePoint (tipo Número, decimales permitidos).
+CONFIGURACIÓN: rellenar las 4 constantes del bloque CONFIG antes de ejecutar.
 """
 
-import json
-import sys
-import time
+import json, sys, time
 from openpyxl import load_workbook
 
-# ─── CONFIGURACIÓN ────────────────────────────────────────────────────────────
-CLIENT_ID  = "TU_CLIENT_ID"      # App Registration → Overview → Application (client) ID
-TENANT_ID  = "TU_TENANT_ID"      # Azure AD → Overview → Tenant ID / Directory ID
-SITE_URL   = "https://telice.sharepoint.com/sites/ParteDiario"   # ajustar si difiere
-EXCEL_PATH = "23-039_Maestro_Obra_13_DEF.xlsx"  # ruta relativa o absoluta
+# ═══════════════════════════════════════════════════════════════════════════════
+#  CONFIG — rellenar antes de ejecutar
+# ═══════════════════════════════════════════════════════════════════════════════
+CLIENT_ID  = "ce963b14-1236-4a40-a127-3a055e964cff"
+TENANT_ID  = "ffc698d1-4a6a-46f0-ad29-64cf6b17ab22"
+SITE_URL   = "https://telice.sharepoint.com/sites/APPS_TEST_1"
+EXCEL_PATH = "23-039_Maestro_Obra_13_DEF.xlsx"
+# ═══════════════════════════════════════════════════════════════════════════════
 
-# Nombre interno de la lista en SharePoint (exactamente como está)
-LISTA = "M_Partidas"
+# Definición de las dos listas a actualizar
+LISTAS = [
+    {
+        "nombre":       "M_Partidas",           # nombre exacto en SP
+        "hoja":         "Partidas_Produccion",  # hoja del Excel
+        "fila_inicio":  5,                      # primera fila con datos (1-indexed)
+        "col_codigo":   0,                      # A → Title en SP
+        "col_medicion": 8,                      # I → para filtrar filas vacías
+        "campos": {                             # campo_sp: índice_columna_excel (0-indexed)
+            "CosteUd":  10,   # K = Coste UD Proyecto
+            "CosteTot": 28,   # AC = TOTAL Coste
+        },
+        "excluir": [],        # valores de código a ignorar
+        "decimales": {
+            "CosteUd":  6,
+            "CosteTot": 2,
+        }
+    },
+    {
+        "nombre":       "M_PartidasControl",    # ajustar si el nombre en SP difiere
+        "hoja":         "Partidas_Control",
+        "fila_inicio":  3,
+        "col_codigo":   0,                      # A → Title en SP
+        "col_medicion": 3,                      # D = Medición → para filtrar filas vacías
+        "campos": {
+            "field_4":  4,    # E = Precio venta €/ud
+            "field_5":  5,    # F = Coste estudio €/ud
+            "field_6":  6,    # G = Importe venta total
+            "field_7":  7,    # H = Coste total estudio
+        },
+        "excluir": ["TOTAL GENERAL"],
+        "decimales": {
+            "field_4": 6,
+            "field_5": 6,
+            "field_6": 2,
+            "field_7": 2,
+        }
+    },
+]
 
-# Hoja del Excel y columnas (0-indexed)
-HOJA         = "Partidas_Produccion"
-COL_CODIGO   = 0   # A  → Código partida (Title en SP)
-COL_MEDICION = 8   # I  → Medición (para filtrar filas vacías)
-COL_COSTE_UD = 10  # K  → Coste UD Proyecto
-COL_COSTE_TOT= 28  # AC → TOTAL Coste
-FILA_DATOS   = 5   # primera fila con datos reales (1-indexed, filas 1-4 son título/cabecera/caps)
-
-# ─── AUTENTICACIÓN (Device Code Flow — no necesita secreto) ──────────────────
+# ─── Dependencias ─────────────────────────────────────────────────────────────
 try:
-    import msal
+    import msal, requests
 except ImportError:
-    print("ERROR: instala msal → pip install msal --break-system-packages")
+    print("ERROR: pip install msal requests --break-system-packages")
     sys.exit(1)
 
-try:
-    import requests
-except ImportError:
-    print("ERROR: instala requests → pip install requests --break-system-packages")
-    sys.exit(1)
-
-
+# ─── Autenticación ────────────────────────────────────────────────────────────
 def get_token():
-    """Obtiene token de acceso usando Device Code Flow (abre el navegador)."""
     app = msal.PublicClientApplication(
         CLIENT_ID,
         authority=f"https://login.microsoftonline.com/{TENANT_ID}"
     )
     scopes = ["https://graph.microsoft.com/Sites.ReadWrite.All"]
-
-    # Intentar token en caché primero
     accounts = app.get_accounts()
     if accounts:
-        result = app.acquire_token_silent(scopes, account=accounts[0])
-        if result and "access_token" in result:
-            print("✓ Token obtenido desde caché")
-            return result["access_token"]
-
-    # Device code flow
+        r = app.acquire_token_silent(scopes, account=accounts[0])
+        if r and "access_token" in r:
+            print("✓ Token desde caché")
+            return r["access_token"]
     flow = app.initiate_device_flow(scopes=scopes)
     if "user_code" not in flow:
-        raise ValueError(f"Error iniciando device flow: {flow}")
-
+        raise ValueError(f"Error device flow: {flow}")
     print("\n" + "="*60)
-    print("AUTENTICACIÓN REQUERIDA")
-    print(f"  1. Abre: {flow['verification_uri']}")
-    print(f"  2. Introduce el código: {flow['user_code']}")
+    print("AUTENTICACIÓN — abre el navegador y entra el código:")
+    print(f"  URL:    {flow['verification_uri']}")
+    print(f"  Código: {flow['user_code']}")
     print("="*60 + "\n")
-
-    result = app.acquire_token_by_device_flow(flow)
-    if "access_token" not in result:
-        raise ValueError(f"Error obteniendo token: {result.get('error_description', result)}")
-
+    r = app.acquire_token_by_device_flow(flow)
+    if "access_token" not in r:
+        raise ValueError(r.get("error_description", r))
     print("✓ Autenticación correcta\n")
-    return result["access_token"]
+    return r["access_token"]
 
-
-# ─── FUNCIONES GRAPH API ──────────────────────────────────────────────────────
-
-def get_site_id(token, site_url):
-    """Obtiene el siteId de Graph a partir de la URL del sitio."""
-    # Extraer hostname y path del site_url
-    # ej. https://telice.sharepoint.com/sites/ParteDiario
-    parts = site_url.replace("https://", "").split("/", 1)
-    hostname = parts[0]
-    path = parts[1] if len(parts) > 1 else ""
-    url = f"https://graph.microsoft.com/v1.0/sites/{hostname}:/{path}"
+# ─── Graph helpers ────────────────────────────────────────────────────────────
+def g(token, url):
     r = requests.get(url, headers={"Authorization": f"Bearer {token}"})
     r.raise_for_status()
-    site_id = r.json()["id"]
-    print(f"✓ Site ID: {site_id}")
-    return site_id
+    return r.json()
 
-
-def get_lista_id(token, site_id, nombre_lista):
-    """Obtiene el ID interno de la lista en SP."""
-    url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists?$filter=displayName eq '{nombre_lista}'"
-    r = requests.get(url, headers={"Authorization": f"Bearer {token}"})
-    r.raise_for_status()
-    items = r.json().get("value", [])
-    if not items:
-        raise ValueError(f"Lista '{nombre_lista}' no encontrada en el sitio.")
-    lista_id = items[0]["id"]
-    print(f"✓ Lista '{nombre_lista}' ID: {lista_id}")
-    return lista_id
-
-
-def get_all_items(token, site_id, lista_id):
-    """Lee todos los items de la lista (paginado)."""
-    url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists/{lista_id}/items?$select=id,fields/Title&$top=500"
-    items = []
-    while url:
-        r = requests.get(url, headers={"Authorization": f"Bearer {token}"})
-        r.raise_for_status()
-        data = r.json()
-        items.extend(data.get("value", []))
-        url = data.get("@odata.nextLink")
-    print(f"✓ {len(items)} items leídos de '{LISTA}'")
-    return items
-
-
-def patch_item(token, site_id, lista_id, item_id, campos):
-    """Actualiza campos de un item existente."""
-    url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists/{lista_id}/items/{item_id}"
+def patch(token, url, body):
     r = requests.patch(
         url,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        data=json.dumps({"fields": campos})
+        data=json.dumps(body)
     )
     if r.status_code not in (200, 204):
-        raise ValueError(f"PATCH {item_id} → {r.status_code}: {r.text[:200]}")
+        raise ValueError(f"{r.status_code}: {r.text[:200]}")
 
+def get_site_id(token):
+    parts  = SITE_URL.replace("https://", "").split("/", 1)
+    host   = parts[0]
+    path   = parts[1] if len(parts) > 1 else ""
+    data   = g(token, f"https://graph.microsoft.com/v1.0/sites/{host}:/{path}")
+    sid    = data["id"]
+    print(f"✓ Site ID: {sid}")
+    return sid
 
-# ─── LEER EXCEL ───────────────────────────────────────────────────────────────
+def get_lista_id(token, site_id, nombre):
+    nombre_enc = requests.utils.quote(nombre)
+    data = g(token, f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists?$filter=displayName eq '{nombre}'")
+    items = data.get("value", [])
+    if not items:
+        raise ValueError(f"Lista '{nombre}' no encontrada. Verifica el nombre exacto en SP.")
+    lid = items[0]["id"]
+    print(f"✓ Lista '{nombre}' → {lid}")
+    return lid
 
-def leer_costes_excel(path):
-    """Lee los costes unitarios y totales del Excel Maestro."""
-    wb = load_workbook(path, read_only=True, data_only=True)
-    ws = wb[HOJA]
-    costes = {}
-    filas_vacias = 0
+def get_all_items(token, site_id, lista_id, nombre):
+    url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists/{lista_id}/items?$select=id,fields/Title&$top=500"
+    items = []
+    while url:
+        data = g(token, url)
+        items.extend(data.get("value", []))
+        url = data.get("@odata.nextLink")
+    print(f"✓ {len(items)} items en '{nombre}'")
+    return {item["fields"]["Title"]: item["id"] for item in items}
 
-    for row in ws.iter_rows(min_row=FILA_DATOS, values_only=True):
-        cod      = row[COL_CODIGO]
-        medicion = row[COL_MEDICION]
-        coste_ud = row[COL_COSTE_UD]
-        coste_tot= row[COL_COSTE_TOT]
+# ─── Lectura Excel ────────────────────────────────────────────────────────────
+def leer_excel(cfg):
+    wb   = load_workbook(EXCEL_PATH, read_only=True, data_only=True)
+    ws   = wb[cfg["hoja"]]
+    cols = cfg["campos"]
+    dec  = cfg["decimales"]
+    excl = set(cfg.get("excluir", []))
+    datos = {}
+    vacias = 0
 
-        # Saltar filas de capítulo/título (sin medición) y filas sin código
-        if not cod or not isinstance(cod, str) or not medicion:
-            filas_vacias += 1
+    for row in ws.iter_rows(min_row=cfg["fila_inicio"], values_only=True):
+        cod = row[cfg["col_codigo"]]
+        if not cod or not isinstance(cod, str):
+            vacias += 1
             continue
-
-        costes[cod.strip()] = {
-            "CosteUd":  round(float(coste_ud),  6) if coste_ud  is not None else 0.0,
-            "CosteTot": round(float(coste_tot), 2) if coste_tot is not None else 0.0,
-        }
+        cod = cod.strip()
+        if cod in excl:
+            continue
+        med = row[cfg["col_medicion"]]
+        if not med:
+            vacias += 1
+            continue
+        entrada = {}
+        for campo_sp, col_idx in cols.items():
+            val = row[col_idx]
+            d   = dec.get(campo_sp, 2)
+            entrada[campo_sp] = round(float(val), d) if val is not None else 0.0
+        datos[cod] = entrada
 
     wb.close()
-    print(f"✓ {len(costes)} partidas leídas del Excel (saltadas {filas_vacias} filas sin datos)")
-    return costes
+    print(f"  {len(datos)} partidas leídas ({vacias} filas vacías/título ignoradas)")
+    return datos
 
+# ─── Procesado de una lista ───────────────────────────────────────────────────
+def procesar_lista(token, site_id, cfg):
+    nombre = cfg["nombre"]
+    print(f"\n{'─'*60}")
+    print(f"Procesando: {nombre}  ({cfg['hoja']})")
 
-# ─── MAIN ─────────────────────────────────────────────────────────────────────
+    datos    = leer_excel(cfg)
+    lista_id = get_lista_id(token, site_id, nombre)
+    mapa_sp  = get_all_items(token, site_id, lista_id, nombre)
 
-def main():
-    print("=== Carga de CosteUd y CosteTot en M_Partidas (SharePoint) ===\n")
-
-    # 1. Leer Excel
-    print(f"Leyendo {EXCEL_PATH}...")
-    costes = leer_costes_excel(EXCEL_PATH)
-    if not costes:
-        print("ERROR: No se encontraron partidas en el Excel.")
-        sys.exit(1)
-
-    # Preview
-    preview = list(costes.items())[:3]
-    print("Preview:")
-    for cod, vals in preview:
-        print(f"  {cod}: CosteUd={vals['CosteUd']}, CosteTot={vals['CosteTot']}")
-    print()
-
-    # 2. Obtener token
-    token = get_token()
-
-    # 3. Obtener IDs de sitio y lista
-    site_id  = get_site_id(token, SITE_URL)
-    lista_id = get_lista_id(token, site_id, LISTA)
-
-    # 4. Leer items existentes en SP → mapa Title → item_id
-    items_sp = get_all_items(token, site_id, lista_id)
-    mapa_sp  = {item["fields"]["Title"]: item["id"] for item in items_sp}
-
-    # 5. Actualizar cada partida
+    base_url     = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists/{lista_id}/items"
     actualizados = 0
-    no_encontrados = []
-    errores = []
+    no_enc       = []
+    errores      = []
+    total        = len(datos)
 
-    total = len(costes)
-    print(f"\nActualizando {total} partidas en SharePoint...")
-
-    for i, (cod, vals) in enumerate(costes.items(), 1):
+    print(f"  Actualizando {total} partidas...")
+    for i, (cod, campos) in enumerate(datos.items(), 1):
         if cod not in mapa_sp:
-            no_encontrados.append(cod)
+            no_enc.append(cod)
             continue
-
         try:
-            patch_item(token, site_id, lista_id, mapa_sp[cod], {
-                "CosteUd":  vals["CosteUd"],
-                "CosteTot": vals["CosteTot"],
-            })
+            patch(token, f"{base_url}/{mapa_sp[cod]}", {"fields": campos})
             actualizados += 1
-            if i % 20 == 0 or i == total:
-                print(f"  {i}/{total} ({actualizados} actualizados, {len(errores)} errores)...")
-            # Pequeña pausa para no saturar Graph API (throttling)
-            time.sleep(0.05)
-
+            if i % 25 == 0 or i == total:
+                print(f"    {i}/{total} — {actualizados} OK, {len(errores)} errores")
+            time.sleep(0.05)   # evitar throttling Graph API
         except Exception as e:
             errores.append(f"{cod}: {e}")
 
-    # 6. Resumen
-    print("\n=== RESUMEN ===")
-    print(f"  ✓ Actualizados:    {actualizados}")
-    print(f"  ⚠ No encontrados:  {len(no_encontrados)}")
-    print(f"  ✗ Errores:         {len(errores)}")
-
-    if no_encontrados:
-        print(f"\nPartidas del Excel no encontradas en SP ({len(no_encontrados)}):")
-        for cod in no_encontrados[:10]:
-            print(f"  - {cod}")
-        if len(no_encontrados) > 10:
-            print(f"  ... y {len(no_encontrados)-10} más")
-
+    # Resumen de lista
+    print(f"\n  RESULTADO '{nombre}':")
+    print(f"    ✓ Actualizados:   {actualizados}")
+    print(f"    ⚠ No en SP:       {len(no_enc)}")
+    print(f"    ✗ Errores:        {len(errores)}")
+    if no_enc:
+        print(f"    Códigos no encontrados (primeros 5): {no_enc[:5]}")
     if errores:
-        print(f"\nErrores ({len(errores)}):")
-        for e in errores[:5]:
-            print(f"  - {e}")
+        print(f"    Errores (primeros 3): {errores[:3]}")
 
-    print("\nDone.")
+    return {"actualizados": actualizados, "no_enc": len(no_enc), "errores": len(errores)}
 
+# ─── Main ─────────────────────────────────────────────────────────────────────
+def main():
+    print("╔══════════════════════════════════════════════════════════╗")
+    print("║  Carga de costes unitarios y totales → SharePoint        ║")
+    print("║  Listas: M_Partidas + M_PartidasControl                  ║")
+    print("╚══════════════════════════════════════════════════════════╝\n")
+
+    # Validar config básica
+    if "TU_" in CLIENT_ID or "TU_" in TENANT_ID:
+        print("ERROR: Rellena CLIENT_ID y TENANT_ID en la sección CONFIG del script.")
+        sys.exit(1)
+
+    token   = get_token()
+    site_id = get_site_id(token)
+
+    totales = {"actualizados": 0, "no_enc": 0, "errores": 0}
+    for cfg in LISTAS:
+        res = procesar_lista(token, site_id, cfg)
+        for k in totales:
+            totales[k] += res[k]
+
+    print(f"\n{'═'*60}")
+    print("RESUMEN GLOBAL")
+    print(f"  ✓ Actualizados totales: {totales['actualizados']}")
+    print(f"  ⚠ No encontrados:       {totales['no_enc']}")
+    print(f"  ✗ Errores:              {totales['errores']}")
+    print("Done.")
 
 if __name__ == "__main__":
     main()
