@@ -530,11 +530,15 @@
     </div>
   </div>
   <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">
-    <select id="rolSelector" onchange="cambiarRol(this.value)"
-      style="background:var(--bg3);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:var(--font);font-size:12px;font-weight:600;padding:5px 8px;cursor:pointer;">
-      <option value="encargado">👷 Jefe de equipo</option>
-      <option value="jefe">📋 Jefe de obra</option>
-    </select>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+      <div style="display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:5px 10px;">
+        <div id="usuarioAvatar" style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;">?</div>
+        <span id="usuarioActivo" style="font-size:12px;font-weight:600;color:var(--text);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Cargando...</span>
+        <button onclick="Sesion.cerrar()" title="Cerrar sesión"
+          style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:16px;padding:0 2px;line-height:1;"
+          title="Cerrar sesión">⏻</button>
+      </div>
+    </div>
     <button class="sync-btn" onclick="syncPartes()" title="Sincroniza los partes locales con SharePoint. Cuando el punto es verde, los datos están al día." style="padding:4px 8px;font-size:11px;">
       <span class="sync-dot" id="syncDot"></span>
       <span id="syncLabel">Sincronizar</span>
@@ -1722,6 +1726,7 @@
 <script src="msal-browser.min.js"></script>
 <script src="sp-integracion.js"></script>
 <script src="transformar.js"></script>
+<script src="sesion.js"></script>
 
 <script>
 // ═══════════════════════════════════════════
@@ -1771,6 +1776,12 @@ let state = {
 // INICIALIZACIÓN
 // ═══════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
+  // ── Verificar sesión activa ──────────────────────────────────────────────
+  const sesionActiva = Sesion.init();
+  if (!sesionActiva) return; // Sesion.init() redirige a login.html si no hay sesión
+
+  // ── Ajustar permisos de botones según rol ────────────────────────────────
+  // Los botones con data-accion='aprobar_parte' etc. ya se ocultan en Sesion.init()
   // Fecha de hoy
   const hoy = new Date();
   document.getElementById('fecha').value = hoy.toISOString().split('T')[0];
