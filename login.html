@@ -264,28 +264,33 @@ async function login() {
  * Devuelve el objeto usuario o null si no existe.
  */
 async function buscarUsuarioEnSP(usuario, password) {
-  // Usar la función de sp-integracion.js para leer la lista M_Personal
-  // filtrando por LoginUsuario
-  const items = await spReadAll('Usuarios');
-  if (!items || items.length === 0) return null;
+  // 1. Autenticar con MSAL (necesario para leer SharePoint)
+  await SPTelice.ensureReady();
+  if (!SPTelice.currentAccount()) {
+    await SPTelice.login();
+  }
 
-  const match = items.find(item => {
-    const f = item.fields || item;
-    return (f.Title || '').toLowerCase() === usuario.toLowerCase()
-        && (f.Password || '') === password;
-  });
+  // 2. Leer lista Usuarios via SP REST API
+  const data = await SPTelice.spGet(
+    "/lists/GetByTitle('Usuarios')/items?$select=Title,Nombre,Password,Rol,Departamento&$top=500"
+  );
+  const items = (data && data.value) ? data.value : [];
+  if (items.length === 0) return null;
+
+  // 3. Buscar usuario y validar contraseña
+  const match = items.find(item =>
+    (item.Title || '').toLowerCase() === usuario.toLowerCase() &&
+    (item.Password || '') === password
+  );
 
   if (!match) return null;
 
-  const f = match.fields || match;
   return {
-    num:          f.Title        || '',
-    nombre:       f.Nombre       || '',
-    categoria:    f.Departamento || '',
-    tipo:         f.Rol          || '',
-    rol:          (f.Rol         || '').trim(),
-    departamento: f.Departamento || '',
-    login:        f.Title        || usuario,
+    num:          match.Title        || '',
+    nombre:       match.Nombre       || '',
+    rol:          (match.Rol         || '').trim(),
+    departamento: match.Departamento || '',
+    login:        match.Title        || usuario,
   };
 }
 
