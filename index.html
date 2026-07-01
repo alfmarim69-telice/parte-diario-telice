@@ -5678,7 +5678,12 @@ function exportarExcel() {
   const BUSCABLES = ['p_select','m_select','alq_select','mat_select',
     'sub_select','sub_empresa_sel','otros_select','prod_partida',
     'cost_task','cost_personal','cost_maquinaria','cost_subcontratas',
-    'cost_otros','ind_select','proyecto'];
+    'cost_otros','ind_select','proyecto','obraSelector'];
+
+  // Selects que viven sobre un fondo oscuro y necesitan el input "invertido"
+  // (claro/blanco sobre oscuro cuando está cerrado); el panel desplegado
+  // sigue siendo siempre claro y legible, igual que el resto de combos.
+  const FONDO_OSCURO = ['obraSelector'];
 
   function inyectarEstilos(){
     if(document.getElementById('combo-buscable-css')) return;
@@ -5703,6 +5708,14 @@ function exportarExcel() {
       }
       .combo-wrap .combo-input:focus { outline:none; border-color: var(--accent); cursor:text; }
       .combo-wrap.combo-open .combo-input { border-radius:4px 4px 0 0; border-color:var(--accent); }
+      .combo-wrap .combo-input.invertido {
+        background: rgba(255,255,255,.12);
+        border-color: rgba(255,255,255,.35);
+        color: #fff;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      }
+      .combo-wrap .combo-input.invertido::placeholder { color: rgba(255,255,255,.75); }
+      .combo-wrap.combo-open .combo-input.invertido { border-color: rgba(255,255,255,.6); }
       .combo-panel {
         display:none;
         position:fixed;
@@ -5804,15 +5817,18 @@ function exportarExcel() {
 
     const wrap = document.createElement('div');
     wrap.className = 'combo-wrap';
+    if(sel.style.flex) wrap.style.flex = sel.style.flex;
     sel.parentNode.insertBefore(wrap, sel);
     wrap.appendChild(sel);
 
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'combo-input';
+    if(FONDO_OSCURO.includes(sel.id)) input.classList.add('invertido');
     input.autocomplete = 'off';
     input.setAttribute('inputmode','search');
     input.placeholder = '🔍 Buscar / seleccionar…';
+    if(sel.title) input.title = sel.title;
     input.value = etiquetaSeleccionActual(sel);
     wrap.appendChild(input);
 
