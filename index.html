@@ -5661,9 +5661,12 @@ function exportarExcel() {
 
 
 // ═══════════════════════════════════════════════════════════════
-// DESPLEGABLES CON BÚSQUEDA — filtro por texto en listas largas
-// Convierte <select> en buscables sin alterar su contenido ni su
-// onchange. 100% offline, sin librerías externas. Respeta optgroups.
+// COMBOBOX BUSCABLE — fusiona el <select> y el buscador en UN SOLO
+// elemento visual. Al pulsar, se despliega una única caja que en su
+// primera línea trae el campo de filtro y debajo el listado completo.
+// El <select> original se conserva oculto en el DOM (mismo id,
+// mismo value, mismo evento 'change') para no romper ningún onchange
+// ni código existente que lea/asigne sel.value. 100% offline.
 // ═══════════════════════════════════════════════════════════════
 (function(){
   // Normaliza: minúsculas y sin acentos/diacríticos
@@ -5671,78 +5674,237 @@ function exportarExcel() {
     return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   }
 
-  // IDs de los desplegables largos a hacer buscables
+  // IDs de los desplegables largos a convertir en combobox buscable
   const BUSCABLES = ['p_select','m_select','alq_select','mat_select',
     'sub_select','sub_empresa_sel','otros_select','prod_partida',
     'cost_task','cost_personal','cost_maquinaria','cost_subcontratas',
     'cost_otros','ind_select','proyecto'];
 
-  function hacerBuscable(sel){
-    if(!sel || sel.dataset.searchable === '1') return;
-    sel.dataset.searchable = '1';
+  function inyectarEstilos(){
+    if(document.getElementById('combo-buscable-css')) return;
+    const css = document.createElement('style');
+    css.id = 'combo-buscable-css';
+    css.textContent = `
+      .combo-wrap { position:relative; }
+      .combo-wrap select { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+      .combo-wrap .combo-input {
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text);
+        font-family: var(--font);
+        font-size: 13px;
+        padding: 8px 28px 8px 10px;
+        width: 100%;
+        cursor: pointer;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+      }
+      .combo-wrap .combo-input:focus { outline:none; border-color: var(--accent); cursor:text; }
+      .combo-wrap.combo-open .combo-input { border-radius:4px 4px 0 0; border-color:var(--accent); }
+      .combo-panel {
+        display:none;
+        position:fixed;
+        overflow-y:auto;
+        background: var(--bg2);
+        border:1px solid var(--accent);
+        border-top:none;
+        border-radius:0 0 4px 4px;
+        box-shadow:0 6px 16px rgba(0,0,0,0.18);
+        z-index:5000;
+      }
+      .combo-panel.open { display:block; }
+      .combo-option {
+        padding:8px 10px;
+        font-size:13px;
+        line-height:1.35;
+        color: var(--text);
+        cursor:pointer;
+      }
+      .combo-option:hover, .combo-option.active { background: var(--blue2); }
+      .combo-option.seleccionada { background: var(--accent); color:#fff; }
+      .combo-option.seleccionada:hover { background: var(--accent2); }
+      .combo-option[hidden] { display:none; }
+      .combo-group-label {
+        padding:6px 10px 2px;
+        font-size:10px;
+        font-weight:600;
+        text-transform:uppercase;
+        letter-spacing:.06em;
+        color: var(--text3);
+        font-family: var(--mono);
+      }
+      .combo-empty { padding:10px; font-size:13px; color: var(--text3); font-style:italic; }
+    `;
+    document.head.appendChild(css);
+  }
 
-    // Caja de texto de búsqueda, justo encima del select
-    const box = document.createElement('input');
-    box.type = 'text';
-    box.className = 'select-search-box';
-    box.placeholder = '🔍 Escribe para filtrar…';
-    box.autocomplete = 'off';
-    box.setAttribute('inputmode','search');
-    // Estilo inline (no depende de hoja externa)
-    box.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;margin-bottom:4px;'
-      + 'border:1px solid #ccc;border-radius:6px;font-size:15px;';
-
-    sel.parentNode.insertBefore(box, sel);
-
-    // Guardar el contenido original (para restaurar al limpiar)
-    function snapshotItems(){
-      // Lista de {opt, grupo, texto} de todas las options reales
-      const items = [];
-      sel.querySelectorAll('option').forEach(opt=>{
-        if(opt.value === '' ) return; // saltar placeholder
-        items.push({opt, txt: norm(opt.textContent), grupo: opt.parentNode.tagName==='OPTGROUP'?opt.parentNode:null});
-      });
-      return items;
+  // Reconstruye las opciones visuales del panel a partir del <select> real
+  function construirOpciones(sel, panel){
+    panel.innerHTML = '';
+    const opciones = [];
+    function agregarOpcion(opt){
+      if(opt.value === '') return; // el placeholder no se lista, solo marca "sin selección"
+      const div = document.createElement('div');
+      div.className = 'combo-option';
+      if(opt.value === sel.value) div.classList.add('seleccionada');
+      div.textContent = opt.textContent;
+      div.dataset.value = opt.value;
+      div.dataset.norm = norm(opt.textContent);
+      panel.appendChild(div);
+      opciones.push(div);
     }
-
-    function filtrar(){
-      const q = norm(box.value.trim());
-      const items = snapshotItems();
-      const tokens = q.split(/\s+/).filter(Boolean);
-      let visibles = 0;
-      // Mostrar/ocultar cada option
-      items.forEach(({opt,txt})=>{
-        const match = tokens.every(t=> txt.indexOf(t) !== -1);
-        opt.hidden = !match;
-        opt.style.display = match ? '' : 'none';
-        if(match) visibles++;
-      });
-      // Ocultar optgroups que se quedan sin hijos visibles
-      sel.querySelectorAll('optgroup').forEach(g=>{
-        const algun = Array.from(g.querySelectorAll('option')).some(o=>!o.hidden);
-        g.hidden = !algun;
-        g.style.display = algun ? '' : 'none';
-      });
-      // Si el seleccionado quedó oculto, no forzar cambio (se respeta)
-    }
-
-    box.addEventListener('input', filtrar);
-    // Al enfocar la caja, abrir el desplegable es cosa del usuario; aquí solo filtramos
-    // Limpiar con Escape
-    box.addEventListener('keydown', e=>{
-      if(e.key==='Escape'){ box.value=''; filtrar(); }
+    Array.from(sel.children).forEach(child=>{
+      if(child.tagName === 'OPTGROUP'){
+        const gl = document.createElement('div');
+        gl.className = 'combo-group-label';
+        gl.textContent = child.label;
+        panel.appendChild(gl);
+        Array.from(child.children).forEach(agregarOpcion);
+      } else if(child.tagName === 'OPTION'){
+        agregarOpcion(child);
+      }
     });
-    // Cuando se elige algo, reflejar el texto elegido en la caja para contexto
-    sel.addEventListener('change', ()=>{
-      const o = sel.options[sel.selectedIndex];
-      if(o && o.value!=='') box.value = '';  // limpiar para próxima búsqueda
-      filtrar();
+    if(opciones.length === 0){
+      const vacio = document.createElement('div');
+      vacio.className = 'combo-empty';
+      vacio.textContent = 'Sin resultados';
+      panel.appendChild(vacio);
+    }
+    panel._opciones = opciones;
+  }
+
+  function filtrar(panel, q){
+    const tokens = norm(q).trim().split(/\s+/).filter(Boolean);
+    (panel._opciones||[]).forEach(div=>{
+      div.hidden = !tokens.every(t=> div.dataset.norm.indexOf(t) !== -1);
+    });
+    // Ocultar etiquetas de grupo cuyos hijos quedaron todos ocultos
+    let grupoActual = null;
+    Array.from(panel.children).forEach(child=>{
+      if(child.classList.contains('combo-group-label')){
+        grupoActual = child; grupoActual._visible = false;
+      } else if(child.classList.contains('combo-option') && !child.hidden && grupoActual){
+        grupoActual._visible = true;
+      }
+    });
+    Array.from(panel.children).forEach(child=>{
+      if(child.classList.contains('combo-group-label')) child.hidden = !child._visible;
     });
   }
 
-  // Exponer función para reactivar tras repoblar (por si se regeneran options)
+  function etiquetaSeleccionActual(sel){
+    const opt = sel.options[sel.selectedIndex];
+    return (opt && opt.value !== '') ? opt.textContent : '';
+  }
+
+  function construirCombo(sel){
+    inyectarEstilos();
+
+    const wrap = document.createElement('div');
+    wrap.className = 'combo-wrap';
+    sel.parentNode.insertBefore(wrap, sel);
+    wrap.appendChild(sel);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'combo-input';
+    input.autocomplete = 'off';
+    input.setAttribute('inputmode','search');
+    input.placeholder = '🔍 Buscar / seleccionar…';
+    input.value = etiquetaSeleccionActual(sel);
+    wrap.appendChild(input);
+
+    // El panel se ancla al body (position:fixed) para no quedar recortado
+    // por el overflow de tarjetas o modales, y se posiciona bajo el input.
+    const panel = document.createElement('div');
+    panel.className = 'combo-panel';
+    document.body.appendChild(panel);
+    construirOpciones(sel, panel);
+
+    function posicionarPanel(){
+      const r = input.getBoundingClientRect();
+      panel.style.left = r.left + 'px';
+      panel.style.top = r.bottom + 'px';
+      panel.style.width = r.width + 'px';
+      panel.style.maxHeight = Math.min(280, window.innerHeight - r.bottom - 12) + 'px';
+    }
+
+    function abrirPanel(){
+      wrap.classList.add('combo-open');
+      panel.classList.add('open');
+      posicionarPanel();
+      filtrar(panel, '');
+      input.select();
+      const actual = panel.querySelector('.combo-option.seleccionada');
+      if(actual) actual.scrollIntoView({block:'nearest'});
+    }
+    function cerrarPanel(){
+      wrap.classList.remove('combo-open');
+      panel.classList.remove('open');
+      input.value = etiquetaSeleccionActual(sel);
+    }
+
+    function elegir(valor, texto){
+      const nativeSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;
+      nativeSetter.call(sel, valor);
+      input.value = texto;
+      (panel._opciones||[]).forEach(o=> o.classList.toggle('seleccionada', o.dataset.value === valor));
+      sel.dispatchEvent(new Event('change', {bubbles:true}));
+      cerrarPanel();
+    }
+
+    panel.addEventListener('mousedown', e=>{
+      const opt = e.target.closest('.combo-option');
+      if(!opt) return;
+      e.preventDefault(); // evita que el blur del input cierre el panel antes del click
+      elegir(opt.dataset.value, opt.textContent);
+    });
+
+    input.addEventListener('focus', abrirPanel);
+    input.addEventListener('click', ()=>{ if(!panel.classList.contains('open')) abrirPanel(); });
+    input.addEventListener('input', ()=> filtrar(panel, input.value));
+    input.addEventListener('keydown', e=>{
+      if(e.key === 'Escape'){ input.blur(); }
+      else if(e.key === 'Enter'){
+        e.preventDefault();
+        const visibles = (panel._opciones||[]).filter(o=>!o.hidden);
+        if(visibles.length === 1) elegir(visibles[0].dataset.value, visibles[0].textContent);
+      }
+    });
+    input.addEventListener('blur', ()=> setTimeout(cerrarPanel, 120));
+
+    window.addEventListener('scroll', ()=>{ if(panel.classList.contains('open')) cerrarPanel(); }, true);
+    window.addEventListener('resize', ()=>{ if(panel.classList.contains('open')) posicionarPanel(); });
+
+    // Si el resto de la app hace sel.value = '...' directamente, reflejarlo en el input
+    const nativeDesc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+    Object.defineProperty(sel, 'value', {
+      get(){ return nativeDesc.get.call(sel); },
+      set(v){ nativeDesc.set.call(sel, v); input.value = etiquetaSeleccionActual(sel); },
+      configurable:true
+    });
+
+    sel.dataset.comboBuilt = '1';
+    sel._comboRefs = {input, panel};
+  }
+
+  function refrescarCombo(sel){
+    const refs = sel._comboRefs;
+    if(!refs) return;
+    construirOpciones(sel, refs.panel);
+    refs.input.value = etiquetaSeleccionActual(sel);
+  }
+
+  // Exponer función para (re)activar tras repoblar (por si se regeneran options)
   window.activarBuscadores = function(){
-    BUSCABLES.forEach(id => hacerBuscable(document.getElementById(id)));
+    BUSCABLES.forEach(id=>{
+      const sel = document.getElementById(id);
+      if(!sel) return;
+      if(sel.dataset.comboBuilt === '1') refrescarCombo(sel);
+      else construirCombo(sel);
+    });
   };
 })();
 
