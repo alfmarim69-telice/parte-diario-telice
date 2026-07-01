@@ -5714,7 +5714,9 @@ function exportarExcel() {
   // Selects con pocas opciones fijas que no necesitan caja de búsqueda:
   // se muestran como un simple botón desplegable, sin cursor de texto
   // ni teclado en pantalla, evitando el aspecto "raro" de un input editable.
-  const SIN_BUSCADOR = ['obraSelector'];
+  // (obraSelector se queda FUERA de esta lista: aunque hoy solo tiene 2 obras,
+  // está previsto crecer hasta ~30 y necesitará poder filtrar por texto)
+  const SIN_BUSCADOR = [];
 
   function inyectarEstilos(){
     if(document.getElementById('combo-buscable-css')) return;
@@ -5751,6 +5753,7 @@ function exportarExcel() {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
       }
       .combo-wrap .combo-input.invertido::placeholder { color: rgba(255,255,255,.75); }
+      .combo-wrap .combo-input.invertido::selection { background: rgba(255,255,255,.4); color:#0a1626; }
       .combo-wrap.combo-open .combo-input.invertido { border-color: rgba(255,255,255,.6); }
       .combo-panel {
         display:none;
