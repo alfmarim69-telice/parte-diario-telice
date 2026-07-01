@@ -154,7 +154,7 @@ let lunesInicio;
 
 function cargarObra(cod){
   obraActiva = cod;
-  PARTIDAS = TODAS_PARTIDAS.filter(p=>p.p===cod).map(p=>({cod:p.cod,cap:p.cap,desc:p.desc,ud:p.ud,med:p.med,precioUd:p.precioUd||0}));
+  PARTIDAS = TODAS_PARTIDAS.filter(p=>p.p===cod).map(p=>({cod:p.cod,cap:p.cap,desc:p.desc,ud:p.ud,med:p.med,precioUd:p.precioUd||0,costeUd:p.costeUd||0}));
   PLAN = PLAN_POR_OBRA[cod];
   PARTIDAS.forEach(p=>{ if(!PLAN[p.cod]) PLAN[p.cod]={}; });
   render();
@@ -264,7 +264,16 @@ function recalcular(){
     const cell=document.getElementById('tot-'+p.cod);
     if(cell){ cell.textContent=t.toLocaleString('es-ES'); cell.classList.toggle('exceso', t>p.med); }
     const cellVen=document.getElementById('ven-'+p.cod);
-    if(cellVen){ const v=(t*(p.precioUd||0)); cellVen.textContent=v>0?v.toLocaleString('es-ES',{minimumFractionDigits:0,maximumFractionDigits:0})+' €':'—'; }
+    if(cellVen){
+      const venta = t * (p.precioUd||0);
+      const coste = t * (p.costeUd||0);
+      const margen = venta > 0 && coste > 0 ? Math.round((venta-coste)/venta*100) : null;
+      cellVen.textContent = venta > 0
+        ? venta.toLocaleString('es-ES',{minimumFractionDigits:0,maximumFractionDigits:0}) + ' €'
+          + (margen !== null ? ` (${margen}%)` : '')
+        : '—';
+      cellVen.style.color = margen !== null ? (margen < 0 ? '#c0392b' : 'var(--verde)') : 'var(--verde)';
+    }
   });
   // total por día
   dias.forEach(d=>{

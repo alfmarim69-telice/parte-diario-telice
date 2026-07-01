@@ -18,7 +18,7 @@
  *   - Ud          (texto, una línea)
  *   - CantidadPlanif (número)
  *   - VentaPlanif   (número) = CantidadPlanif × PrecioUd (field_8 de M_Partidas)
- *   - CostePlanif   (número) = 0 por ahora (sin coste unitario en SP)
+ *   - CostePlanif   (número) = CantidadPlanif × CosteUd (campo CosteUd de M_Partidas)
  *
  * ESTRATEGIA DE ESCRITURA (upsert por quincena):
  *   1. Lee todos los items existentes de la lista para esa obra y rango de fechas.
@@ -97,15 +97,16 @@ async function spFetch(url, opts = {}) {
  */
 async function leerPreciosPartidas(proyecto) {
   const filter = encodeURIComponent(`fields/Proyecto eq '${proyecto}'`);
-  const select = encodeURIComponent('fields/Title,fields/field_8');
+  const select = encodeURIComponent('fields/Title,fields/field_8,fields/CosteUd');
   const url = `https://graph.microsoft.com/v1.0/sites/${SP_CONFIG.siteId}/lists/M_Partidas/items?$filter=${filter}&$select=${select}&$top=2000`;
 
   const data = await spFetch(url);
   const precios = {};
   (data.value || []).forEach(item => {
-    const cod   = item.fields.Title;
-    const precio = parseFloat(item.fields.field_8) || 0;
-    if (cod) precios[cod] = precio;
+    const cod      = item.fields.Title;
+    const precioUd = parseFloat(item.fields.field_8)  || 0;
+    const costeUd  = parseFloat(item.fields.CosteUd)  || 0;
+    if (cod) precios[cod] = { precioUd, costeUd };
   });
   return precios;
 }
@@ -214,8 +215,9 @@ async function guardarPlanificacionEnSP(filas, fechaIni, fechaFin) {
 
   // ── 3. Crear o actualizar cada fila del plan ──────────────────────────────
   for (const fila of filas) {
-    const precioUd   = precios[fila.CodProduccion] || 0;
-    const ventaPlanif = parseFloat((fila.CantidadPlanif * precioUd).toFixed(2));
+    const preP        = precios[fila.CodProduccion] || { precioUd: 0, costeUd: 0 };
+    const ventaPlanif = parseFloat((fila.CantidadPlanif * preP.precioUd).toFixed(2));
+    const costePlanif = parseFloat((fila.CantidadPlanif * preP.costeUd).toFixed(2));
 
     const spFields = {
       Title: fila.Clave,
@@ -227,7 +229,7 @@ async function guardarPlanificacionEnSP(filas, fechaIni, fechaFin) {
       Ud: fila.Ud,
       CantidadPlanif: fila.CantidadPlanif,
       VentaPlanif: ventaPlanif,
-      CostePlanif: 0   // pendiente: sin coste unitario en SP por ahora
+      CostePlanif: costePlanif
     };
 
     try {
