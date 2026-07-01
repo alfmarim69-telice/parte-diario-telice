@@ -10,6 +10,10 @@ Actualiza DOS listas de SharePoint con los valores económicos del Excel Maestro
      Escribe: field_4 (PrecioUd), field_5 (CosteUd),
               field_6 (VentaTot), field_7 (CosteTot)
 
+  Procesa los dos Excels Maestro de Obra en una sola ejecución:
+    - 23-039_Maestro_Obra_13_DEF.xlsx
+    - 26-008_Maestro_Obra_DEF.xlsx
+
 PREREQUISITOS:
   pip install openpyxl msal requests --break-system-packages
 
@@ -25,7 +29,10 @@ from openpyxl import load_workbook
 CLIENT_ID  = "ce963b14-1236-4a40-a127-3a055e964cff"
 TENANT_ID  = "ffc698d1-4a6a-46f0-ad29-64cf6b17ab22"
 SITE_URL   = "https://telice.sharepoint.com/sites/APPS_TEST_1"
-EXCEL_PATH = "23-039_Maestro_Obra_13_DEF.xlsx"
+EXCEL_FILES = [
+    "23-039_Maestro_Obra_13_DEF.xlsx",
+    "26-008_Maestro_Obra_DEF.xlsx",
+]
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Definición de las dos listas a actualizar
@@ -148,7 +155,7 @@ def get_all_items(token, site_id, lista_id, nombre):
 
 # ─── Lectura Excel ────────────────────────────────────────────────────────────
 def leer_excel(cfg):
-    wb   = load_workbook(EXCEL_PATH, read_only=True, data_only=True)
+    wb   = load_workbook(cfg.get("excel", EXCEL_FILES[0]), read_only=True, data_only=True)
     ws   = wb[cfg["hoja"]]
     cols = cfg["campos"]
     dec  = cfg["decimales"]
@@ -237,10 +244,15 @@ def main():
     site_id = get_site_id(token)
 
     totales = {"actualizados": 0, "no_enc": 0, "errores": 0}
-    for cfg in LISTAS:
-        res = procesar_lista(token, site_id, cfg)
-        for k in totales:
-            totales[k] += res[k]
+    for excel in EXCEL_FILES:
+        print(f"\n{'═'*60}")
+        print(f"EXCEL: {excel}")
+        for cfg in LISTAS:
+            cfg_obra = dict(cfg)
+            cfg_obra["excel"] = excel
+            res = procesar_lista(token, site_id, cfg_obra)
+            for k in totales:
+                totales[k] += res[k]
 
     print(f"\n{'═'*60}")
     print("RESUMEN GLOBAL")
