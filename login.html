@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Acceso · Parte Diario Telice</title>
+<style>
+  :root {
+    --azul:   #1F3864;
+    --azul2:  #2d4a7c;
+    --verde:  #548235;
+    --rojo:   #c0392b;
+    --bg:     #f0f2f5;
+    --card:   #ffffff;
+    --border: #d0d7de;
+    --text:   #1a2433;
+    --text2:  #5b6573;
+    --font:   'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .card {
+    background: var(--card);
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.10);
+    width: 100%;
+    max-width: 400px;
+    overflow: hidden;
+  }
+
+  .card-header {
+    background: var(--azul);
+    padding: 28px 32px 24px;
+    text-align: center;
+  }
+  .card-header .logo {
+    font-size: 28px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: .5px;
+  }
+  .card-header .sub {
+    font-size: 12px;
+    color: rgba(255,255,255,.65);
+    margin-top: 4px;
+    letter-spacing: .3px;
+  }
+
+  .card-body { padding: 32px; }
+
+  .form-group { margin-bottom: 20px; }
+  .form-group label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    margin-bottom: 6px;
+  }
+  .form-group input {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 7px;
+    font-family: var(--font);
+    font-size: 15px;
+    color: var(--text);
+    transition: border-color .15s;
+    outline: none;
+  }
+  .form-group input:focus {
+    border-color: var(--azul2);
+    box-shadow: 0 0 0 3px rgba(45,74,124,.12);
+  }
+
+  .btn-login {
+    width: 100%;
+    padding: 13px;
+    background: var(--azul);
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    font-family: var(--font);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+    margin-top: 4px;
+  }
+  .btn-login:hover:not(:disabled) { background: var(--azul2); }
+  .btn-login:disabled { opacity: .6; cursor: not-allowed; }
+
+  .error-msg {
+    display: none;
+    background: #fdf2f2;
+    border: 1px solid #f5c6c6;
+    color: var(--rojo);
+    border-radius: 7px;
+    padding: 11px 14px;
+    font-size: 13px;
+    margin-bottom: 18px;
+    text-align: center;
+  }
+  .error-msg.show { display: block; }
+
+  .spinner {
+    display: none;
+    width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    margin: 0 auto;
+  }
+  .spinner.show { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .card-footer {
+    text-align: center;
+    padding: 14px;
+    background: #f8f9fb;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text2);
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="card-header">
+    <div class="logo">Parte Diario</div>
+    <div class="sub">TELICE · Acceso de usuario</div>
+  </div>
+  <div class="card-body">
+    <div class="error-msg" id="errorMsg">Usuario o contraseña incorrectos.</div>
+    <div class="form-group">
+      <label>Usuario</label>
+      <input type="text" id="inputUsuario" placeholder="Tu usuario" autocomplete="username" />
+    </div>
+    <div class="form-group">
+      <label>Contraseña</label>
+      <input type="password" id="inputPassword" placeholder="Tu contraseña" autocomplete="current-password" />
+    </div>
+    <button class="btn-login" id="btnLogin" onclick="login()">
+      <span id="btnTxt">Entrar</span>
+      <span class="spinner" id="spinner"></span>
+    </button>
+  </div>
+  <div class="card-footer">Acceso restringido a personal autorizado de Telice</div>
+</div>
+
+<!-- Dependencias de SharePoint (mismas que en index.html) -->
+<script src="msal-browser.min.js"></script>
+<script src="sp-integracion.js"></script>
+
+<script>
+// ─── Roles válidos y sus permisos ────────────────────────────────────────────
+const ROLES_VALIDOS = [
+  'Jefe Equipo',
+  'Jefe Obra',
+  'Jefe Departamento',
+  'Direccion',
+  'Departamento Planificacion'
+];
+
+// ─── Funciones de sesión ─────────────────────────────────────────────────────
+
+/**
+ * Guarda la sesión del usuario en sessionStorage.
+ * La sesión se pierde al cerrar el navegador (comportamiento deseado).
+ */
+function guardarSesion(usuario) {
+  sessionStorage.setItem('pd_usuario', JSON.stringify({
+    num:      usuario.num,
+    nombre:   usuario.nombre,
+    categoria:usuario.categoria,
+    tipo:     usuario.tipo,
+    rol:      usuario.rol,
+    login:    usuario.login,
+    ts:       Date.now()
+  }));
+}
+
+/**
+ * Lee la sesión activa. Devuelve null si no hay sesión.
+ * Exportada como función global para que index.html la use.
+ */
+function getSesion() {
+  const raw = sessionStorage.getItem('pd_usuario');
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+function cerrarSesion() {
+  sessionStorage.removeItem('pd_usuario');
+  window.location.href = 'login.html';
+}
+
+// ─── Lógica de login ─────────────────────────────────────────────────────────
+
+async function login() {
+  const usuario  = document.getElementById('inputUsuario').value.trim();
+  const password = document.getElementById('inputPassword').value;
+  const errorMsg = document.getElementById('errorMsg');
+  const btnLogin = document.getElementById('btnLogin');
+  const btnTxt   = document.getElementById('btnTxt');
+  const spinner  = document.getElementById('spinner');
+
+  // Validación básica
+  if (!usuario || !password) {
+    mostrarError('Introduce usuario y contraseña.');
+    return;
+  }
+
+  // Estado de carga
+  errorMsg.classList.remove('show');
+  btnLogin.disabled = true;
+  btnTxt.style.display = 'none';
+  spinner.classList.add('show');
+
+  try {
+    // Buscar usuario en M_Personal por LoginUsuario
+    // sp-integracion.js expone spReadAll(listName) o similar
+    // Usamos fetch directo contra SP con el token de MSAL
+    const resultado = await buscarUsuarioEnSP(usuario, password);
+
+    if (!resultado) {
+      mostrarError('Usuario o contraseña incorrectos.');
+      return;
+    }
+
+    if (!ROLES_VALIDOS.includes(resultado.rol)) {
+      mostrarError('Tu usuario no tiene un rol asignado. Contacta con el administrador.');
+      return;
+    }
+
+    // Sesión válida → guardar y redirigir
+    guardarSesion(resultado);
+    window.location.href = 'index.html';
+
+  } catch (e) {
+    console.error('[Login] Error:', e);
+    mostrarError('Error al conectar con el servidor. Inténtalo de nuevo.');
+  } finally {
+    btnLogin.disabled = false;
+    btnTxt.style.display = 'inline';
+    spinner.classList.remove('show');
+  }
+}
+
+/**
+ * Consulta M_Personal en SharePoint buscando el registro con
+ * LoginUsuario = usuario Y LoginPassword = password.
+ * Devuelve el objeto usuario o null si no existe.
+ */
+async function buscarUsuarioEnSP(usuario, password) {
+  // Usar la función de sp-integracion.js para leer la lista M_Personal
+  // filtrando por LoginUsuario
+  const items = await spReadAll('M_Personal');
+  if (!items || items.length === 0) return null;
+
+  const match = items.find(item => {
+    const f = item.fields || item;
+    return (f.LoginUsuario || '').toLowerCase() === usuario.toLowerCase()
+        && (f.LoginPassword || '') === password;
+  });
+
+  if (!match) return null;
+
+  const f = match.fields || match;
+  return {
+    num:       f.Num       || f.Title || '',
+    nombre:    f.Nombre    || '',
+    categoria: f.Categoria || '',
+    tipo:      f.Tipo      || '',
+    rol:       (f.Rol      || '').trim(),
+    login:     f.LoginUsuario || usuario,
+  };
+}
+
+function mostrarError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+
+// ─── Tecla Enter en los campos ───────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') login();
+});
+
+// ─── Si ya hay sesión activa, redirigir directamente ────────────────────────
+if (getSesion()) {
+  window.location.href = 'index.html';
+}
+</script>
+</body>
+</html>
