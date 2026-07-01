@@ -62,6 +62,12 @@ const Sesion = (() => {
       'ver_planificacion',
       'editar_planificacion',
     ],
+  'Planificación': [
+      'ver_todos_partes',
+      'ver_informes',
+      'ver_planificacion',
+      'editar_planificacion',
+    ],
   };
 
   // ─── API pública ──────────────────────────────────────────────────────────
