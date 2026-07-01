@@ -17,6 +17,8 @@
  *   - Descripcion (texto, varias líneas o una línea)
  *   - Ud          (texto, una línea)
  *   - CantidadPlanif (número)
+ *   - VentaPlanif   (número) = CantidadPlanif × PrecioUd (field_8 de M_Partidas)
+ *   - CostePlanif   (número) = 0 por ahora (sin coste unitario en SP)
  *
  * ESTRATEGIA DE ESCRITURA (upsert por quincena):
  *   1. Lee todos los items existentes de la lista para esa obra y rango de fechas.
@@ -85,6 +87,29 @@ async function spFetch(url, opts = {}) {
   return res.json();
 }
 
+
+// ─── PRECIOS DE M_PARTIDAS ────────────────────────────────────────────────────
+
+/**
+ * Lee los precios unitarios de venta (field_8) de M_Partidas para una obra.
+ * Devuelve un mapa { codPartida: precioUd }
+ * @param {string} proyecto - código de obra
+ */
+async function leerPreciosPartidas(proyecto) {
+  const filter = encodeURIComponent(`fields/Proyecto eq '${proyecto}'`);
+  const select = encodeURIComponent('fields/Title,fields/field_8');
+  const url = `https://graph.microsoft.com/v1.0/sites/${SP_CONFIG.siteId}/lists/M_Partidas/items?$filter=${filter}&$select=${select}&$top=2000`;
+
+  const data = await spFetch(url);
+  const precios = {};
+  (data.value || []).forEach(item => {
+    const cod   = item.fields.Title;
+    const precio = parseFloat(item.fields.field_8) || 0;
+    if (cod) precios[cod] = precio;
+  });
+  return precios;
+}
+
 // ─── LECTURA ─────────────────────────────────────────────────────────────────
 
 /**
@@ -143,6 +168,15 @@ async function guardarPlanificacionEnSP(filas, fechaIni, fechaFin) {
 
   const proyecto = filas.length > 0 ? filas[0].Proyecto : null;
 
+  // ── 0. Cargar precios de venta desde M_Partidas ───────────────────────────
+  let precios = {};
+  try {
+    if (proyecto) precios = await leerPreciosPartidas(proyecto);
+  } catch(e) {
+    console.warn('[Planificacion] No se pudieron cargar precios:', e.message);
+    // No es bloqueante: guardamos con VentaPlanif = 0 si falla
+  }
+
   // ── 1. Leer items existentes en SP para este proyecto y quincena ──────────
   let itemsExistentes = [];
   try {
@@ -180,6 +214,9 @@ async function guardarPlanificacionEnSP(filas, fechaIni, fechaFin) {
 
   // ── 3. Crear o actualizar cada fila del plan ──────────────────────────────
   for (const fila of filas) {
+    const precioUd   = precios[fila.CodProduccion] || 0;
+    const ventaPlanif = parseFloat((fila.CantidadPlanif * precioUd).toFixed(2));
+
     const spFields = {
       Title: fila.Clave,
       Proyecto: fila.Proyecto,
@@ -188,7 +225,9 @@ async function guardarPlanificacionEnSP(filas, fechaIni, fechaFin) {
       CodProduccion: fila.CodProduccion,
       Descripcion: fila.Descripcion,
       Ud: fila.Ud,
-      CantidadPlanif: fila.CantidadPlanif
+      CantidadPlanif: fila.CantidadPlanif,
+      VentaPlanif: ventaPlanif,
+      CostePlanif: 0   // pendiente: sin coste unitario en SP por ahora
     };
 
     try {
