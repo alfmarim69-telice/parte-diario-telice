@@ -154,7 +154,7 @@ let lunesInicio;
 
 function cargarObra(cod){
   obraActiva = cod;
-  PARTIDAS = TODAS_PARTIDAS.filter(p=>p.p===cod).map(p=>({cod:p.cod,cap:p.cap,desc:p.desc,ud:p.ud,med:p.med}));
+  PARTIDAS = TODAS_PARTIDAS.filter(p=>p.p===cod).map(p=>({cod:p.cod,cap:p.cap,desc:p.desc,ud:p.ud,med:p.med,precioUd:p.precioUd||0}));
   PLAN = PLAN_POR_OBRA[cod];
   PARTIDAS.forEach(p=>{ if(!PLAN[p.cod]) PLAN[p.cod]={}; });
   render();
@@ -197,7 +197,7 @@ function render(){
     const dow=d.toLocaleDateString('es-ES',{weekday:'short'}).slice(0,3);
     th+=`<th class="${fin?'finde':''}"><div class="dia"><div class="dow">${dow}</div><div class="num">${fmtCorto(d)}</div></div></th>`;
   });
-  th+='<th class="col-tot">Total</th></tr>';
+  th+='<th class="col-tot">Total ud</th><th class="col-tot" style="min-width:80px">Venta €</th></tr>';
   document.getElementById('thead').innerHTML=th;
 
   // aplicar filtros
@@ -230,6 +230,7 @@ function render(){
       body+=`<td class="celda ${fin?'finde':''}"><input type="number" min="0" step="any" value="${v}" data-cod="${p.cod}" data-fecha="${iso(d)}" oninput="onInput(this)"></td>`;
     });
     body+=`<td class="col-tot-cell" id="tot-${p.cod}">0</td>`;
+    body+=`<td class="col-tot-cell" id="ven-${p.cod}" style="color:var(--verde)">0</td>`;
     body+='</tr>';
   });
   document.getElementById('tbody').innerHTML=body;
@@ -240,7 +241,7 @@ function render(){
     const fin=(d.getDay()===0||d.getDay()===6);
     foot+=`<td class="${fin?'finde':''}" id="totdia-${iso(d)}">0</td>`;
   });
-  foot+='<td></td></tr>';
+  foot+='<td></td><td></td></tr>';
   document.getElementById('tfoot').innerHTML=foot;
 
   recalcular();
@@ -262,6 +263,8 @@ function recalcular(){
     let t=0; Object.values(PLAN[p.cod]).forEach(v=>t+=v);
     const cell=document.getElementById('tot-'+p.cod);
     if(cell){ cell.textContent=t.toLocaleString('es-ES'); cell.classList.toggle('exceso', t>p.med); }
+    const cellVen=document.getElementById('ven-'+p.cod);
+    if(cellVen){ const v=(t*(p.precioUd||0)); cellVen.textContent=v>0?v.toLocaleString('es-ES',{minimumFractionDigits:0,maximumFractionDigits:0})+' €':'—'; }
   });
   // total por día
   dias.forEach(d=>{
@@ -307,7 +310,8 @@ async function guardar(){
         Clave:`${obraActiva}|${p.cod}|${f}`,
         Proyecto:obraActiva, Fecha:f,
         Semana:semanaISO(new Date(f+'T00:00:00')),
-        CodProduccion:p.cod, Descripcion:p.desc, Ud:p.ud, CantidadPlanif:cant
+        CodProduccion:p.cod, Descripcion:p.desc, Ud:p.ud,
+        CantidadPlanif:cant, PrecioUd:p.precioUd||0
       });
     });
   });
