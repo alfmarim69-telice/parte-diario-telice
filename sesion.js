@@ -44,7 +44,7 @@ const Sesion = (() => {
       'aprobar_parte',
       'devolver_parte',
     ],
-    'Direccion': [
+    'Dirección': [
       'crear_parte',
       'editar_parte_propio',
       'enviar_parte',

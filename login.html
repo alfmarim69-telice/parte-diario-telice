@@ -169,7 +169,7 @@ const ROLES_VALIDOS = [
   'Jefe Equipo',
   'Jefe Obra',
   'Jefe Departamento',
-  'Direccion',
+  'Dirección',
   'Departamento Planificacion'
 ];
 
@@ -266,25 +266,26 @@ async function login() {
 async function buscarUsuarioEnSP(usuario, password) {
   // Usar la función de sp-integracion.js para leer la lista M_Personal
   // filtrando por LoginUsuario
-  const items = await spReadAll('M_Personal');
+  const items = await spReadAll('Usuarios');
   if (!items || items.length === 0) return null;
 
   const match = items.find(item => {
     const f = item.fields || item;
-    return (f.LoginUsuario || '').toLowerCase() === usuario.toLowerCase()
-        && (f.LoginPassword || '') === password;
+    return (f.Title || '').toLowerCase() === usuario.toLowerCase()
+        && (f.Password || '') === password;
   });
 
   if (!match) return null;
 
   const f = match.fields || match;
   return {
-    num:       f.Num       || f.Title || '',
-    nombre:    f.Nombre    || '',
-    categoria: f.Categoria || '',
-    tipo:      f.Tipo      || '',
-    rol:       (f.Rol      || '').trim(),
-    login:     f.LoginUsuario || usuario,
+    num:          f.Title        || '',
+    nombre:       f.Nombre       || '',
+    categoria:    f.Departamento || '',
+    tipo:         f.Rol          || '',
+    rol:          (f.Rol         || '').trim(),
+    departamento: f.Departamento || '',
+    login:        f.Title        || usuario,
   };
 }
 
