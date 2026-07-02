@@ -502,6 +502,39 @@ async function guardarPlanificacion(proyecto, filas) {
   return { creadas: creadas, actualizadas: actualizadas, borradas: borradas, errores: errores, ok: errores.length === 0 };
 }
 
+// Lee la producción REAL de una obra desde ParteProduccion, cruzándola con
+// Partes para obtener la fecha (ParteProduccion no tiene columna Fecha propia:
+// la fecha vive en la cabecera del parte y se une por ParteId).
+// Filtrado por proyecto en cliente ($filter sobre columnas no indexadas da HTTP 500).
+// Devuelve [{ ParteId, Fecha, CodProduccion, Cantidad, Importe, Ud }]
+async function leerProduccionReal(proyecto) {
+  await ensureReady();
+
+  // 1) Mapa ParteId -> Fecha desde las cabeceras (field_1=ParteId, field_2=Proyecto, field_3=Fecha)
+  var partes = await spGet("/lists/GetByTitle('Partes')/items?$top=5000&$select=field_1,field_2,field_3");
+  var fechaPorParte = {};
+  (partes.value || []).forEach(function (it) {
+    if (String(it.field_2 || '').trim() !== proyecto) return;
+    fechaPorParte[String(it.field_1)] = it.field_3 || '';
+  });
+
+  // 2) Líneas de producción (field_1=ParteId, field_2=Proyecto, field_3=Cod, field_4=Cantidad)
+  var prod = await spGet("/lists/GetByTitle('ParteProduccion')/items?$top=5000&$select=field_1,field_2,field_3,field_4,Importe,Ud");
+  var out = [];
+  (prod.value || []).forEach(function (it) {
+    if (String(it.field_2 || '').trim() !== proyecto) return;
+    out.push({
+      ParteId: it.field_1,
+      Fecha: fechaPorParte[String(it.field_1)] || '',
+      CodProduccion: it.field_3 || '',
+      Cantidad: it.field_4 || 0,
+      Importe: it.Importe || 0,
+      Ud: it.Ud || ''
+    });
+  });
+  return out;
+}
+
 // ═══════════════════════════════════════════════════════
 // GUARDADO COMPLETO DEL PARTE EN SHAREPOINT
 // ═══════════════════════════════════════════════════════
@@ -713,7 +746,8 @@ global.SPTelice = {
   getStockMaterial: getStockMaterial,
   getStockProyecto: getStockProyecto,
   guardarParteEnSP: guardarParteEnSP,
-  guardarPlanificacion: guardarPlanificacion
+  guardarPlanificacion: guardarPlanificacion,
+  leerProduccionReal: leerProduccionReal
 };
 
 })(window);

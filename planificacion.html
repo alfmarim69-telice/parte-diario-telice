@@ -61,6 +61,13 @@
   td.finde.celda input.lleno{background:#f0e6d4;color:var(--naranja)}
   .col-tot-cell{padding:7px 8px;text-align:right;background:#f7f9fb;font-weight:600;font-size:12px;color:var(--azul)}
   .col-tot-cell.exceso{color:#c0392b}
+  .col-real-cell{padding:7px 8px;text-align:right;background:#f2f7f0;font-weight:600;font-size:12px;color:var(--verde)}
+  .col-desv-cell{padding:7px 8px;text-align:right;background:#fbf8f2;font-weight:700;font-size:12px}
+  .col-desv-cell.pos{color:var(--verde)}
+  .col-desv-cell.neg{color:#c0392b}
+  .real-mini{font-size:10px;text-align:center;color:var(--verde);font-weight:700;line-height:1;padding:0 2px 4px;white-space:nowrap}
+  .real-mini.sobre{color:#c0392b}
+  thead th.col-real,thead th.col-desv{padding:10px 8px;min-width:70px;text-align:right;background:var(--azul2)}
 
   tfoot td{border-top:2px solid var(--azul);padding:8px;font-weight:700;font-size:12px;background:#f0f3f7;text-align:center}
   tfoot td.lbl{text-align:right;position:sticky;left:0;background:#f0f3f7;z-index:2;min-width:380px}
@@ -125,8 +132,8 @@
   <div class="leyenda">
     <span><i class="sw" style="background:#eaf3e3"></i> Día planificado</span>
     <span><i class="sw" style="background:var(--finde)"></i> Fin de semana</span>
-    <span><i class="sw" style="background:#f7f9fb;border:1px solid var(--border2)"></i> Total partida (14 días)</span>
-    <span>El total compara con la medición de proyecto · en rojo si se supera</span>
+    <span style="color:var(--verde);font-weight:600">✔ n = ejecutado real ese día (de los partes)</span>
+    <span>Columnas Plan / Real / Desv %: acumulados de la partida · desviación = (real − plan) / plan</span>
   </div>
 </div>
 
@@ -183,6 +190,10 @@ async function conectarSP(){
 // VentaPlanif/CostePlanif al guardar. Se reconstruye cada vez que se carga obra.
 let PRECIOS = {};
 
+// Ejecutado REAL: cod -> {fechaISO: cantidad} (agregado de ParteProduccion,
+// puede haber varios partes el mismo día sobre la misma partida)
+let REAL = {};
+
 function cargarObra(cod){
   obraActiva = cod;
   document.getElementById('selObra').value = cod;
@@ -208,7 +219,32 @@ function cargarObra(cod){
   if (PARTIDAS.length === 0){
     estadoSP(spListo ? 'Esta obra no tiene partidas en M_Partidas' : 'Sin conexión a SharePoint');
   }
+  REAL = {};          // se pinta primero el plan y el real llega asíncrono
   render();
+  cargarEjecutadoReal(cod);
+}
+
+// Trae el ejecutado real (ParteProduccion x Partes) y repinta la cuadrícula.
+// Es asíncrono e independiente del render inicial: la herramienta no se
+// bloquea si esta lectura tarda o falla.
+async function cargarEjecutadoReal(cod){
+  if (!spListo || typeof SPTelice === 'undefined' || !SPTelice.leerProduccionReal) return;
+  try{
+    estadoSP('Leyendo producción real…');
+    const filas = await SPTelice.leerProduccionReal(cod);
+    if (obraActiva !== cod) return;   // el usuario cambió de obra mientras cargaba
+    REAL = {};
+    filas.forEach(f => {
+      if (!f.CodProduccion || !f.Fecha) return;
+      if (!REAL[f.CodProduccion]) REAL[f.CodProduccion] = {};
+      REAL[f.CodProduccion][f.Fecha] = (REAL[f.CodProduccion][f.Fecha] || 0) + (f.Cantidad || 0);
+    });
+    estadoSP('Conectado ✓ · plan + ejecutado');
+    render();
+  }catch(e){
+    console.warn('[Planificación] no se pudo leer producción real:', e && e.message);
+    estadoSP('Conectado ✓ · sin datos de ejecutado (' + (e && e.message || '') + ')');
+  }
 }
 
 function lunesDeHoy(){
@@ -247,7 +283,7 @@ function render(){
     const dow=d.toLocaleDateString('es-ES',{weekday:'short'}).slice(0,3);
     th+=`<th class="${fin?'finde':''}"><div class="dia"><div class="dow">${dow}</div><div class="num">${fmtCorto(d)}</div></div></th>`;
   });
-  th+='<th class="col-tot">Total</th></tr>';
+  th+='<th class="col-tot">Plan</th><th class="col-real" style="text-align:right">Real</th><th class="col-desv" style="text-align:right">Desv %</th></tr>';
   document.getElementById('thead').innerHTML=th;
 
   // aplicar filtros
@@ -263,12 +299,12 @@ function render(){
   // cuerpo agrupado por capítulo
   let body='', capActual=null;
   if(visibles.length===0){
-    body=`<tr><td colspan="${dias.length+4}" style="padding:30px;text-align:center;color:var(--text2)">No hay partidas que coincidan con el filtro.</td></tr>`;
+    body=`<tr><td colspan="${dias.length+6}" style="padding:30px;text-align:center;color:var(--text2)">No hay partidas que coincidan con el filtro.</td></tr>`;
   }
   visibles.forEach((p,idx)=>{
     if(p.cap!==capActual){
       capActual=p.cap;
-      body+=`<tr class="cap-row"><td colspan="${dias.length+4}">${p.cap}</td></tr>`;
+      body+=`<tr class="cap-row"><td colspan="${dias.length+6}">${p.cap}</td></tr>`;
     }
     body+=`<tr data-cod="${p.cod}">`;
     body+=`<td class="col-cod-cell">${p.cod}</td>`;
@@ -277,20 +313,33 @@ function render(){
     dias.forEach(d=>{
       const fin=(d.getDay()===0||d.getDay()===6);
       const v=PLAN[p.cod][iso(d)]||'';
-      body+=`<td class="celda ${fin?'finde':''}"><input type="number" min="0" step="any" value="${v}" data-cod="${p.cod}" data-fecha="${iso(d)}" oninput="onInput(this)"></td>`;
+      const r=(REAL[p.cod]||{})[iso(d)];
+      // Real ejecutado ese día bajo la casilla de plan; rojo si supera lo planificado
+      const mini = (r!==undefined)
+        ? `<div class="real-mini ${v!=='' && r>v?'sobre':''}" title="Ejecutado real">✔ ${r.toLocaleString('es-ES')}</div>`
+        : '';
+      body+=`<td class="celda ${fin?'finde':''}"><input type="number" min="0" step="any" value="${v}" data-cod="${p.cod}" data-fecha="${iso(d)}" oninput="onInput(this)">${mini}</td>`;
     });
     body+=`<td class="col-tot-cell" id="tot-${p.cod}">0</td>`;
+    body+=`<td class="col-real-cell" id="real-${p.cod}">—</td>`;
+    body+=`<td class="col-desv-cell" id="desv-${p.cod}">—</td>`;
     body+='</tr>';
   });
   document.getElementById('tbody').innerHTML=body;
 
-  // pie: total por día
-  let foot='<tr><td class="lbl" colspan="3">Total por día →</td>';
+  // pie: total por día (plan) + total por día (ejecutado real)
+  let foot='<tr><td class="lbl" colspan="3">Plan por día →</td>';
   dias.forEach(d=>{
     const fin=(d.getDay()===0||d.getDay()===6);
     foot+=`<td class="${fin?'finde':''}" id="totdia-${iso(d)}">0</td>`;
   });
-  foot+='<td></td></tr>';
+  foot+='<td></td><td></td><td></td></tr>';
+  foot+='<tr><td class="lbl" colspan="3" style="color:var(--verde)">Ejecutado por día →</td>';
+  dias.forEach(d=>{
+    const fin=(d.getDay()===0||d.getDay()===6);
+    foot+=`<td class="${fin?'finde':''}" id="realdia-${iso(d)}" style="color:var(--verde)">—</td>`;
+  });
+  foot+='<td></td><td></td><td></td></tr>';
   document.getElementById('tfoot').innerHTML=foot;
 
   recalcular();
@@ -307,17 +356,37 @@ function onInput(inp){
 
 function recalcular(){
   const dias=dias14();
-  // total por partida
+  // total por partida: plan, real y desviación (acumulados de todas las fechas)
   PARTIDAS.forEach(p=>{
     let t=0; Object.values(PLAN[p.cod]).forEach(v=>t+=v);
     const cell=document.getElementById('tot-'+p.cod);
     if(cell){ cell.textContent=t.toLocaleString('es-ES'); cell.classList.toggle('exceso', t>p.med); }
+
+    let r=0; Object.values(REAL[p.cod]||{}).forEach(v=>r+=v);
+    const cellR=document.getElementById('real-'+p.cod);
+    if(cellR) cellR.textContent = r ? r.toLocaleString('es-ES') : '—';
+
+    const cellD=document.getElementById('desv-'+p.cod);
+    if(cellD){
+      if(t>0 && r>0){
+        const d=((r-t)/t)*100;
+        cellD.textContent=(d>0?'+':'')+d.toFixed(0)+'%';
+        cellD.classList.toggle('pos', d>=0);
+        cellD.classList.toggle('neg', d<0);
+      } else { cellD.textContent='—'; cellD.classList.remove('pos','neg'); }
+    }
   });
-  // total por día
+  // total por día: plan y ejecutado
   dias.forEach(d=>{
-    let t=0; PARTIDAS.forEach(p=>{ if(PLAN[p.cod][iso(d)]) t+=PLAN[p.cod][iso(d)]; });
+    let t=0, r=0;
+    PARTIDAS.forEach(p=>{
+      if(PLAN[p.cod][iso(d)]) t+=PLAN[p.cod][iso(d)];
+      if((REAL[p.cod]||{})[iso(d)]) r+=REAL[p.cod][iso(d)];
+    });
     const cell=document.getElementById('totdia-'+iso(d));
     if(cell) cell.textContent = t? t.toLocaleString('es-ES') : '0';
+    const cellR=document.getElementById('realdia-'+iso(d));
+    if(cellR) cellR.textContent = r? r.toLocaleString('es-ES') : '—';
   });
   // marcar inputs llenos
   document.querySelectorAll('td.celda input').forEach(inp=>{
