@@ -435,6 +435,74 @@ async function deleteMaterial(spId) {
 
 
 // ═══════════════════════════════════════════════════════
+// GUARDADO DE PLANIFICACIÓN (comparación planificado vs ejecutado)
+// ═══════════════════════════════════════════════════════
+
+// El mapa de nombres internos se resuelve una sola vez por nombre real de
+// columna (igual que en la lectura), así no dependemos de que la lista se
+// haya creado con field_1, field_2... — funciona la haya creado quien la haya
+// creado (UI de SharePoint o API).
+var _planifFieldMapCache = null;
+async function getPlanifFieldMap() {
+  if (!_planifFieldMapCache) _planifFieldMapCache = await spFieldMap('Planificacion');
+  return _planifFieldMapCache;
+}
+
+// Guarda el plan completo de una obra: actualiza lo que ya existía, crea lo
+// nuevo, y BORRA de SharePoint las líneas que ya no están en `filas` (p.ej.
+// el usuario vació una celda que antes tenía cantidad). `filas` debe traer
+// el estado COMPLETO deseado para esa obra, no solo lo cambiado.
+// filas: [{ Clave, Proyecto, Fecha, Semana, CodProduccion, Descripcion, Ud,
+//           CantidadPlanif, VentaPlanif, CostePlanif }]
+async function guardarPlanificacion(proyecto, filas) {
+  await ensureReady();
+  var fm = await getPlanifFieldMap();
+  var colProyecto = fm['Proyecto'] || 'field_1';
+
+  var existentes = await spGet(
+    "/lists/GetByTitle('Planificacion')/items?$filter=" + colProyecto + " eq '" + proyecto + "'" +
+    "&$select=Id,Title&$top=5000"
+  );
+  var porClave = {};
+  (existentes.value || []).forEach(function (it) { porClave[it.Title] = it.Id; });
+
+  var errores = [], creadas = 0, actualizadas = 0, borradas = 0;
+
+  for (var i = 0; i < filas.length; i++) {
+    var f = filas[i];
+    var campos = {
+      Proyecto: f.Proyecto, Fecha: f.Fecha, Semana: f.Semana,
+      CodProduccion: f.CodProduccion, Descripcion: f.Descripcion, Ud: f.Ud,
+      CantidadPlanif: f.CantidadPlanif || 0,
+      VentaPlanif: f.VentaPlanif || 0,
+      CostePlanif: f.CostePlanif || 0
+    };
+    var body = {};
+    Object.keys(campos).forEach(function (col) { body[fm[col] || col] = campos[col]; });
+    try {
+      if (porClave[f.Clave]) {
+        await spPatch('Planificacion', porClave[f.Clave], body);
+        actualizadas++;
+      } else {
+        body.Title = f.Clave;
+        await spPost('Planificacion', body);
+        creadas++;
+      }
+    } catch (e) { errores.push(f.Clave + ': ' + e.message); }
+  }
+
+  var clavesNuevas = {};
+  filas.forEach(function (f) { clavesNuevas[f.Clave] = 1; });
+  var aBorrar = Object.keys(porClave).filter(function (cl) { return !clavesNuevas[cl]; });
+  for (var j = 0; j < aBorrar.length; j++) {
+    try { await spDelete('Planificacion', porClave[aBorrar[j]]); borradas++; }
+    catch (e) { errores.push('borrar ' + aBorrar[j] + ': ' + e.message); }
+  }
+
+  return { creadas: creadas, actualizadas: actualizadas, borradas: borradas, errores: errores, ok: errores.length === 0 };
+}
+
+// ═══════════════════════════════════════════════════════
 // GUARDADO COMPLETO DEL PARTE EN SHAREPOINT
 // ═══════════════════════════════════════════════════════
 
@@ -644,7 +712,8 @@ global.SPTelice = {
   registrarMovimientoMaterial: registrarMovimientoMaterial,
   getStockMaterial: getStockMaterial,
   getStockProyecto: getStockProyecto,
-  guardarParteEnSP: guardarParteEnSP
+  guardarParteEnSP: guardarParteEnSP,
+  guardarPlanificacion: guardarPlanificacion
 };
 
 })(window);
