@@ -5747,14 +5747,21 @@ function exportarExcel() {
       .combo-wrap .combo-input:focus { outline:none; border-color: var(--accent); cursor:text; }
       .combo-wrap.combo-open .combo-input { border-radius:4px 4px 0 0; border-color:var(--accent); }
       .combo-wrap .combo-input.invertido {
-        background: rgba(255,255,255,.12);
-        border-color: rgba(255,255,255,.35);
-        color: #fff;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+        background-color: #ffffff;
+        border: 1px solid rgba(255,255,255,.55);
+        color: var(--accent);
+        font-weight: 600;
+        border-radius: 6px;
+        padding: 9px 30px 9px 12px;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%231a56a0' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+        background-size: 12px 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.15);
       }
-      .combo-wrap .combo-input.invertido::placeholder { color: rgba(255,255,255,.75); }
-      .combo-wrap .combo-input.invertido::selection { background: rgba(255,255,255,.4); color:#0a1626; }
-      .combo-wrap.combo-open .combo-input.invertido { border-color: rgba(255,255,255,.6); }
+      .combo-wrap .combo-input.invertido::placeholder { color: var(--text3); }
+      .combo-wrap .combo-input.invertido::selection { background: var(--blue2); color: var(--accent2); }
+      .combo-wrap.combo-open .combo-input.invertido { border-color: #fff; border-radius: 6px 6px 0 0; }
       .combo-panel {
         display:none;
         position:fixed;
