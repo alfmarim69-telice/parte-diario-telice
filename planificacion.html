@@ -262,11 +262,18 @@ function construirRealPorKm(){
 
 // Ejecutado real de una partida dentro del tramo seleccionado (o toda la obra si no hay selección)
 function ejecTramo(cod){
+  if(pksSeleccionados.size === 0){
+    // Sin tramo: suma todo el ejecutado real de esa partida (global)
+    let t = 0;
+    Object.values(REAL[cod]||{}).forEach(v=> t += v);
+    return t;
+  }
+  // Con tramo: suma solo líneas con PK ubicado en los kms seleccionados
   const porKm = REALPK[cod];
   if(!porKm) return 0;
   let t = 0;
   Object.entries(porKm).forEach(([km, v])=>{
-    if(pksSeleccionados.size === 0 || pksSeleccionados.has(Number(km))) t += v;
+    if(pksSeleccionados.has(Number(km))) t += v;
   });
   return t;
 }
@@ -288,19 +295,19 @@ function kmLabel(km){
 // Las líneas sin PK solo se muestran cuando NO hay tramo seleccionado.
 function ejecDiaTramo(cod, fechaISO){
   if(pksSeleccionados.size === 0){
-    // Sin filtro de tramo: muestra todo (ubicado + sin ubicar)
-    return (REAL[cod]||{})[fechaISO];
+    // Sin tramo: suma TODO el ejecutado de esa partida ese día (visión global)
+    const tot = (REAL[cod]||{})[fechaISO];
+    return tot > 0 ? tot : undefined;
   }
-  // Con tramo activo: suma solo lo ubicado en los kms seleccionados ese día
+  // Con tramo activo: suma solo líneas con PK ubicado en los kms seleccionados
   let total = 0, hayAlgo = false;
   REAL_OBRA.forEach(f=>{
     if(f.CodProduccion !== cod || f.Fecha !== fechaISO) return;
     if(cuadrillaActiva && f.Cuadrilla !== cuadrillaActiva) return;
     const a = pkAMetros(f.PKInicio), b = pkAMetros(f.PKFinal);
-    if(a === null && b === null) return; // sin PK → no mostrar en tramo concreto
+    if(a === null && b === null) return; // sin PK → no cuenta en tramo concreto
     let ini = (a!==null?a:b), fin = (b!==null?b:a);
     if(fin < ini){ const t=ini; ini=fin; fin=t; }
-    // ¿Algún km seleccionado queda dentro de este tramo?
     let coincide = false;
     pksSeleccionados.forEach(km=>{
       if(ini <= (km+1)*1000 && fin >= km*1000) coincide = true;
