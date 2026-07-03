@@ -251,7 +251,11 @@ async function spPost(listTitle, body) {
   });
   if (!r.ok) {
     var msg = 'HTTP ' + r.status;
-    try { var j = await r.json(); if (j.error && j.error.message) msg += ': ' + j.error.message.value; } catch(e) {}
+    try {
+      var j = await r.json();
+      var em = j.error && j.error.message;
+      msg += ': ' + (typeof em === 'string' ? em : (em && em.value) || JSON.stringify(j));
+    } catch(e) {}
     throw new Error(msg);
   }
   return r.json();
@@ -272,7 +276,11 @@ async function spPatch(listTitle, id, body) {
   });
   if (!r.ok && r.status !== 204) {
     var msg = 'HTTP ' + r.status;
-    try { var j = await r.json(); if (j.error && j.error.message) msg += ': ' + j.error.message.value; } catch(e) {}
+    try {
+      var j = await r.json();
+      var em = j.error && j.error.message;
+      msg += ': ' + (typeof em === 'string' ? em : (em && em.value) || JSON.stringify(j));
+    } catch(e) {}
     throw new Error(msg);
   }
   return true;
@@ -492,10 +500,12 @@ async function guardarPlanificacion(proyecto, cuadrilla, filas) {
     Object.keys(campos).forEach(function (col) { body[fm[col] || col] = campos[col]; });
     try {
       if (porClave[f.Clave]) {
+        console.log('[SP] PATCH body:', JSON.stringify(body));
         await spPatch('Planificacion', porClave[f.Clave], body);
         actualizadas++;
       } else {
         body.Title = f.Clave;
+        console.log('[SP] POST body:', JSON.stringify(body));
         await spPost('Planificacion', body);
         creadas++;
       }
