@@ -20,6 +20,14 @@
   .obra-pill{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600}
 
   .toolbar{background:var(--card);border-bottom:1px solid var(--border);padding:12px 22px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;position:sticky;top:0;z-index:20}
+  .pk-bar{background:#f4f7fb;border-bottom:1px solid var(--border);padding:9px 22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .pk-titulo{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;font-weight:700;white-space:nowrap}
+  .pk-chips{display:flex;gap:6px;flex-wrap:wrap}
+  .pk-chip{border:1px solid var(--border2);border-radius:14px;padding:4px 12px;font-size:12px;font-family:var(--mono,monospace);cursor:pointer;background:#fff;color:var(--text);user-select:none;white-space:nowrap}
+  .pk-chip:hover{border-color:var(--azul)}
+  .pk-chip.activo{background:var(--azul);border-color:var(--azul);color:#fff;font-weight:700}
+  .pk-vertodas{font-size:12px;color:var(--text2);display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:auto;white-space:nowrap}
+  .col-medtramo-cell{padding:7px 8px;text-align:right;background:#eef4fb;font-weight:700;font-size:12px;color:var(--azul);white-space:nowrap}
   .nav-quincena{display:flex;align-items:center;gap:8px}
   .nav-quincena button{width:32px;height:32px;border:1px solid var(--border2);background:#fff;border-radius:6px;cursor:pointer;font-size:15px;color:var(--azul);display:flex;align-items:center;justify-content:center;transition:.15s}
   .nav-quincena button:hover{background:var(--azul);color:#fff;border-color:var(--azul)}
@@ -92,10 +100,15 @@
     <h1>Planificación de obra</h1>
     <div class="sub">Parte Diario · Telice · <span id="estadoSP">Conectando con SharePoint…</span></div>
   </div>
-  <select id="selObra" onchange="cargarObra(this.value)">
-    <option value="23-039">23-039 · Renovación Norte</option>
-    <option value="26-008">26-008 · LAV Lorca-Almería · Catenaria</option>
-  </select>
+  <div style="display:flex;gap:10px;align-items:center">
+    <select id="selCuadrilla" onchange="onCuadrillaChange(this.value)" title="Cuadrilla que ejecutará este plan">
+      <option value="">— Cuadrilla —</option>
+    </select>
+    <select id="selObra" onchange="cargarObra(this.value)">
+      <option value="23-039">23-039 · Renovación Norte</option>
+      <option value="26-008">26-008 · LAV Lorca-Almería · Catenaria</option>
+    </select>
+  </div>
 </header>
 
 <div class="toolbar">
@@ -117,6 +130,12 @@
   <div class="spacer"></div>
   <span class="estado" id="estado">Listo</span>
   <button class="btn-guardar" onclick="guardar()">Guardar planificación</button>
+</div>
+
+<div class="pk-bar" id="pkBar" style="display:none">
+  <span class="pk-titulo">Tramo (PK):</span>
+  <div class="pk-chips" id="pkChips"></div>
+  <label class="pk-vertodas"><input type="checkbox" id="chkVerTodas" onchange="render()"> Ver también partidas sin medición en el tramo</label>
 </div>
 
 <div class="wrap">
@@ -190,11 +209,116 @@ async function conectarSP(){
 // VentaPlanif/CostePlanif al guardar. Se reconstruye cada vez que se carga obra.
 let PRECIOS = {};
 
-// Ejecutado REAL: cod -> {fechaISO: cantidad} (agregado de ParteProduccion,
-// puede haber varios partes el mismo día sobre la misma partida)
+// Ejecutado REAL de la cuadrilla activa: cod -> {fechaISO: cantidad}
 let REAL = {};
+// Filas crudas del ejecutado de la obra (todas las cuadrillas), para refiltrar
+// al cambiar de cuadrilla sin volver a leer SharePoint.
+let REAL_OBRA = [];
 
-function cargarObra(cod){
+// Cuadrilla activa: LA PLANIFICACIÓN ES POR OBRA + CUADRILLA
+let cuadrillaActiva = '';
+
+// Medición por PK: cod -> {km: medicion}; y lista de kms disponibles en la obra
+let MEDPK = {};
+let KMS_OBRA = [];
+let pksSeleccionados = new Set();   // vacío = todos los tramos (sin filtrar)
+
+function kmLabel(km){
+  return String(km) + '+000 – ' + String(km+1) + '+000';
+}
+
+// Medición de una partida en el tramo seleccionado (o total M_MedicionPK si no hay selección)
+function medTramo(cod){
+  const porKm = MEDPK[cod];
+  if(!porKm) return null;              // partida sin datos de PK
+  let t = 0;
+  Object.entries(porKm).forEach(([km, m])=>{
+    if(pksSeleccionados.size === 0 || pksSeleccionados.has(Number(km))) t += m;
+  });
+  return t;
+}
+
+function renderPKChips(){
+  const bar = document.getElementById('pkBar');
+  const cont = document.getElementById('pkChips');
+  if(KMS_OBRA.length === 0){ bar.style.display='none'; return; }
+  bar.style.display='flex';
+  cont.innerHTML = KMS_OBRA.map(km =>
+    `<span class="pk-chip ${pksSeleccionados.has(km)?'activo':''}" onclick="togglePK(${km})">${kmLabel(km)}</span>`
+  ).join('');
+}
+
+function togglePK(km){
+  if(pksSeleccionados.has(km)) pksSeleccionados.delete(km);
+  else pksSeleccionados.add(km);
+  renderPKChips();
+  render();
+}
+
+function onCuadrillaChange(v){
+  if(v === '__nueva__'){
+    const nombre = (prompt('Nombre de la nueva cuadrilla:')||'').trim();
+    if(!nombre){ document.getElementById('selCuadrilla').value = cuadrillaActiva; return; }
+    const sel = document.getElementById('selCuadrilla');
+    const opt = document.createElement('option');
+    opt.value = nombre; opt.textContent = nombre;
+    sel.insertBefore(opt, sel.querySelector('option[value="__nueva__"]'));
+    sel.value = nombre;
+    v = nombre;
+  }
+  cuadrillaActiva = v;
+  cargarPlanCuadrilla();
+  filtrarRealPorCuadrilla();
+  render();
+}
+
+async function poblarCuadrillas(cod){
+  const sel = document.getElementById('selCuadrilla');
+  sel.innerHTML = '<option value="">— Cuadrilla —</option>';
+  let cuadrillas = [];
+  if (spListo && SPTelice.leerCuadrillas){
+    try{ cuadrillas = await SPTelice.leerCuadrillas(cod); }
+    catch(e){ console.warn('[Planificación] sin cuadrillas:', e && e.message); }
+  }
+  // añadir también cuadrillas que ya tengan planificación guardada
+  (DATOS_SP && DATOS_SP.planificacion || []).forEach(r=>{
+    const c = (r.Cuadrilla||'').trim();
+    if(c && (r.Proyecto||'').trim()===cod && !cuadrillas.includes(c)) cuadrillas.push(c);
+  });
+  cuadrillas.sort().forEach(c=>{
+    const o=document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o);
+  });
+  const nueva=document.createElement('option');
+  nueva.value='__nueva__'; nueva.textContent='＋ Nueva cuadrilla…';
+  sel.appendChild(nueva);
+  // preseleccionar la primera si existe
+  cuadrillaActiva = cuadrillas[0] || '';
+  sel.value = cuadrillaActiva;
+}
+
+// Carga en PLAN la planificación guardada de la obra+cuadrilla activas
+function cargarPlanCuadrilla(){
+  PLAN = {};
+  PARTIDAS.forEach(p => { PLAN[p.cod] = {}; });
+  (DATOS_SP && DATOS_SP.planificacion || []).forEach(row => {
+    if ((row.Proyecto||'').trim() !== obraActiva) return;
+    if ((row.Cuadrilla||'').trim() !== cuadrillaActiva) return;
+    if (!PLAN[row.CodProduccion]) PLAN[row.CodProduccion] = {};
+    PLAN[row.CodProduccion][row.Fecha] = row.CantidadPlanif;
+  });
+}
+
+function filtrarRealPorCuadrilla(){
+  REAL = {};
+  REAL_OBRA.forEach(f => {
+    if (!f.CodProduccion || !f.Fecha) return;
+    if (cuadrillaActiva && f.Cuadrilla !== cuadrillaActiva) return;
+    if (!REAL[f.CodProduccion]) REAL[f.CodProduccion] = {};
+    REAL[f.CodProduccion][f.Fecha] = (REAL[f.CodProduccion][f.Fecha] || 0) + (f.Cantidad || 0);
+  });
+}
+
+async function cargarObra(cod){
   obraActiva = cod;
   document.getElementById('selObra').value = cod;
 
@@ -206,39 +330,45 @@ function cargarObra(cod){
   PRECIOS = {};
   partidasSP.forEach(p => { PRECIOS[p.Codigo] = { pv: p.PrecioVenta || 0, cu: p.CosteUd || 0 }; });
 
-  // Planificación ya guardada en SharePoint para esta obra
-  PLAN = {};
-  PARTIDAS.forEach(p => { PLAN[p.cod] = {}; });
-  const planifSP = (DATOS_SP && DATOS_SP.planificacion || []).filter(p => (p.Proyecto||'').trim() === cod);
-  planifSP.forEach(row => {
-    if (!PLAN[row.CodProduccion]) PLAN[row.CodProduccion] = {};
-    PLAN[row.CodProduccion][row.Fecha] = row.CantidadPlanif;
-  });
-  PLAN_POR_OBRA[cod] = PLAN;
-
   if (PARTIDAS.length === 0){
     estadoSP(spListo ? 'Esta obra no tiene partidas en M_Partidas' : 'Sin conexión a SharePoint');
   }
-  REAL = {};          // se pinta primero el plan y el real llega asíncrono
+
+  await poblarCuadrillas(cod);
+  cargarPlanCuadrilla();
+
+  // Mediciones por PK (asíncrono, la lista puede no existir todavía)
+  MEDPK = {}; KMS_OBRA = []; pksSeleccionados = new Set();
+  if (spListo && SPTelice.leerMedicionPK){
+    try{
+      const med = await SPTelice.leerMedicionPK(cod);
+      const kms = new Set();
+      med.forEach(m => {
+        if(!MEDPK[m.Codigo]) MEDPK[m.Codigo] = {};
+        MEDPK[m.Codigo][m.Km] = (MEDPK[m.Codigo][m.Km]||0) + m.Medicion;
+        kms.add(m.Km);
+      });
+      KMS_OBRA = [...kms].sort((a,b)=>a-b);
+    }catch(e){ console.warn('[Planificación] sin M_MedicionPK:', e && e.message); }
+  }
+  renderPKChips();
+
+  REAL = {}; REAL_OBRA = [];
   render();
   cargarEjecutadoReal(cod);
 }
 
-// Trae el ejecutado real (ParteProduccion x Partes) y repinta la cuadrícula.
-// Es asíncrono e independiente del render inicial: la herramienta no se
-// bloquea si esta lectura tarda o falla.
+// Trae el ejecutado real (ParteProduccion x Partes) de TODA la obra y lo
+// filtra por la cuadrilla activa. Se guarda crudo en REAL_OBRA para poder
+// cambiar de cuadrilla sin volver a leer SharePoint.
 async function cargarEjecutadoReal(cod){
   if (!spListo || typeof SPTelice === 'undefined' || !SPTelice.leerProduccionReal) return;
   try{
     estadoSP('Leyendo producción real…');
     const filas = await SPTelice.leerProduccionReal(cod);
     if (obraActiva !== cod) return;   // el usuario cambió de obra mientras cargaba
-    REAL = {};
-    filas.forEach(f => {
-      if (!f.CodProduccion || !f.Fecha) return;
-      if (!REAL[f.CodProduccion]) REAL[f.CodProduccion] = {};
-      REAL[f.CodProduccion][f.Fecha] = (REAL[f.CodProduccion][f.Fecha] || 0) + (f.Cantidad || 0);
-    });
+    REAL_OBRA = filas;
+    filtrarRealPorCuadrilla();
     estadoSP('Conectado ✓ · plan + ejecutado');
     render();
   }catch(e){
@@ -277,7 +407,9 @@ function render(){
   document.getElementById('fechaInicio').value = iso(lunesInicio);
 
   // cabecera
+  const hayPK = KMS_OBRA.length > 0;
   let th='<tr><th class="col-cod">Código</th><th class="col-desc">Descripción</th><th class="col-med">Medición proy.</th>';
+  if(hayPK) th+='<th class="col-med" style="background:var(--azul2,#134080)">Med. tramo</th>';
   dias.forEach(d=>{
     const fin=(d.getDay()===0||d.getDay()===6);
     const dow=d.toLocaleDateString('es-ES',{weekday:'short'}).slice(0,3);
@@ -286,6 +418,9 @@ function render(){
   th+='<th class="col-tot">Plan</th><th class="col-real" style="text-align:right">Real</th><th class="col-desv" style="text-align:right">Desv %</th></tr>';
   document.getElementById('thead').innerHTML=th;
 
+  const nCols = dias.length + 6 + (hayPK?1:0);
+  const verTodas = document.getElementById('chkVerTodas') && document.getElementById('chkVerTodas').checked;
+
   // aplicar filtros
   let visibles = PARTIDAS.filter(p=>{
     if(soloPlanificadas && Object.keys(PLAN[p.cod]||{}).length===0) return false;
@@ -293,23 +428,34 @@ function render(){
       const t=filtroTexto.toLowerCase();
       if(!(p.cod.toLowerCase().includes(t)||p.desc.toLowerCase().includes(t)||p.cap.toLowerCase().includes(t))) return false;
     }
+    // filtro por tramo: si hay PKs seleccionados, ocultar partidas sin medición
+    // en ese tramo (salvo "ver todas" o que ya tengan plan tecleado)
+    if(hayPK && pksSeleccionados.size>0 && !verTodas){
+      const mt = medTramo(p.cod);
+      const tienePlan = Object.keys(PLAN[p.cod]||{}).length>0;
+      if((mt===null || mt===0) && !tienePlan) return false;
+    }
     return true;
   });
 
   // cuerpo agrupado por capítulo
   let body='', capActual=null;
   if(visibles.length===0){
-    body=`<tr><td colspan="${dias.length+6}" style="padding:30px;text-align:center;color:var(--text2)">No hay partidas que coincidan con el filtro.</td></tr>`;
+    body=`<tr><td colspan="${nCols}" style="padding:30px;text-align:center;color:var(--text2)">No hay partidas que coincidan con el filtro.</td></tr>`;
   }
   visibles.forEach((p,idx)=>{
     if(p.cap!==capActual){
       capActual=p.cap;
-      body+=`<tr class="cap-row"><td colspan="${dias.length+6}">${p.cap}</td></tr>`;
+      body+=`<tr class="cap-row"><td colspan="${nCols}">${p.cap}</td></tr>`;
     }
     body+=`<tr data-cod="${p.cod}">`;
     body+=`<td class="col-cod-cell">${p.cod}</td>`;
     body+=`<td class="col-desc-cell">${p.desc}</td>`;
     body+=`<td class="col-med-cell"><b>${p.med.toLocaleString('es-ES')}</b> ${p.ud}</td>`;
+    if(hayPK){
+      const mt = medTramo(p.cod);
+      body+=`<td class="col-medtramo-cell" title="Medición en el tramo seleccionado">${mt===null?'—':mt.toLocaleString('es-ES')+' '+p.ud}</td>`;
+    }
     dias.forEach(d=>{
       const fin=(d.getDay()===0||d.getDay()===6);
       const v=PLAN[p.cod][iso(d)]||'';
@@ -328,13 +474,14 @@ function render(){
   document.getElementById('tbody').innerHTML=body;
 
   // pie: total por día (plan) + total por día (ejecutado real)
-  let foot='<tr><td class="lbl" colspan="3">Plan por día →</td>';
+  const lblSpan = 3 + (hayPK?1:0);
+  let foot='<tr><td class="lbl" colspan="'+lblSpan+'">Plan por día →</td>';
   dias.forEach(d=>{
     const fin=(d.getDay()===0||d.getDay()===6);
     foot+=`<td class="${fin?'finde':''}" id="totdia-${iso(d)}">0</td>`;
   });
   foot+='<td></td><td></td><td></td></tr>';
-  foot+='<tr><td class="lbl" colspan="3" style="color:var(--verde)">Ejecutado por día →</td>';
+  foot+='<tr><td class="lbl" colspan="'+lblSpan+'" style="color:var(--verde)">Ejecutado por día →</td>';
   dias.forEach(d=>{
     const fin=(d.getDay()===0||d.getDay()===6);
     foot+=`<td class="${fin?'finde':''}" id="realdia-${iso(d)}" style="color:var(--verde)">—</td>`;
@@ -417,17 +564,24 @@ function marcarSinGuardar(){
 }
 
 async function guardar(){
-  // Genera TODAS las filas del estado actual (incluir cantidad = 0 no; solo lo planificado)
+  if(!cuadrillaActiva){
+    alert('Selecciona una cuadrilla antes de guardar: la planificación es por cuadrilla, no por obra entera.');
+    return;
+  }
+  const pksTxt = [...pksSeleccionados].sort((a,b)=>a-b).map(kmLabel).join(', ');
+  // Genera TODAS las filas del estado actual de esta obra+cuadrilla
   const filas=[];
   PARTIDAS.forEach(p=>{
     const precio = PRECIOS[p.cod] || { pv:0, cu:0 };
     Object.entries(PLAN[p.cod]).forEach(([f,cant])=>{
       filas.push({
-        Clave:`${obraActiva}|${p.cod}|${f}`,
-        Proyecto:obraActiva, Fecha:f, Semana:semanaISO(new Date(f+'T00:00:00')),
+        Clave:`${obraActiva}|${cuadrillaActiva}|${p.cod}|${f}`,
+        Proyecto:obraActiva, Cuadrilla:cuadrillaActiva,
+        Fecha:f, Semana:semanaISO(new Date(f+'T00:00:00')),
         CodProduccion:p.cod, Descripcion:p.desc, Ud:p.ud, CantidadPlanif:cant,
         VentaPlanif: +(cant * precio.pv).toFixed(2),
-        CostePlanif: +(cant * precio.cu).toFixed(2)
+        CostePlanif: +(cant * precio.cu).toFixed(2),
+        PKs: pksTxt
       });
     });
   });
@@ -442,7 +596,7 @@ async function guardar(){
   document.getElementById('estado').textContent = 'Guardando…';
   document.getElementById('estado').style.color = 'var(--text2)';
   try{
-    const res = await SPTelice.guardarPlanificacion(obraActiva, filas);
+    const res = await SPTelice.guardarPlanificacion(obraActiva, cuadrillaActiva, filas);
     if (res.ok){
       document.getElementById('estado').textContent =
         `Guardado · ${res.creadas} nuevas, ${res.actualizadas} actualizadas, ${res.borradas} borradas`;

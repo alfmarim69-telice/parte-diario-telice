@@ -150,7 +150,7 @@ var SP_SCHEMA = {
     cols:['Clave','Proyecto','Codigo','Categoria','Concepto','ImporteEstimado','Observaciones'],
     num:['ImporteEstimado'] },
   Planificacion: { target:'planificacion', proyecto:true,
-    cols:['Clave','Proyecto','Fecha','Semana','CodProduccion','Descripcion','Ud','CantidadPlanif','VentaPlanif','CostePlanif'],
+    cols:['Clave','Proyecto','Fecha','Semana','CodProduccion','Descripcion','Ud','CantidadPlanif','VentaPlanif','CostePlanif','Cuadrilla','PKs'],
     num:['Semana','CantidadPlanif','VentaPlanif','CostePlanif'] },
   ParteMateriales: { target:'parteMateriales', proyecto:true,
     cols:['Clave','ParteId','Proyecto','CodMaterial','CodControl','Cantidad','TipoMovimiento','CosteUnitario'],
@@ -448,34 +448,42 @@ async function getPlanifFieldMap() {
   return _planifFieldMapCache;
 }
 
-// Guarda el plan completo de una obra: actualiza lo que ya existía, crea lo
-// nuevo, y BORRA de SharePoint las líneas que ya no están en `filas` (p.ej.
-// el usuario vació una celda que antes tenía cantidad). `filas` debe traer
-// el estado COMPLETO deseado para esa obra, no solo lo cambiado.
-// filas: [{ Clave, Proyecto, Fecha, Semana, CodProduccion, Descripcion, Ud,
-//           CantidadPlanif, VentaPlanif, CostePlanif }]
-async function guardarPlanificacion(proyecto, filas) {
+// Guarda el plan completo de una obra+cuadrilla: actualiza lo que ya existía,
+// crea lo nuevo, y BORRA de SharePoint las líneas de esa obra+cuadrilla que ya
+// no están en `filas`. `filas` debe traer el estado COMPLETO deseado para esa
+// obra+cuadrilla, no solo lo cambiado. El resto de cuadrillas no se toca.
+// filas: [{ Clave, Proyecto, Cuadrilla, Fecha, Semana, CodProduccion, Descripcion,
+//           Ud, CantidadPlanif, VentaPlanif, CostePlanif, PKs }]
+async function guardarPlanificacion(proyecto, cuadrilla, filas) {
   await ensureReady();
   var fm = await getPlanifFieldMap();
   var colProyecto = fm['Proyecto'] || 'field_1';
+  var colCuadrilla = fm['Cuadrilla'] || 'Cuadrilla';
 
+  // Lectura completa + filtrado en cliente ($filter sobre columnas no
+  // indexadas devuelve HTTP 500 en estas listas)
   var existentes = await spGet(
-    "/lists/GetByTitle('Planificacion')/items?$filter=" + colProyecto + " eq '" + proyecto + "'" +
-    "&$select=Id,Title&$top=5000"
+    "/lists/GetByTitle('Planificacion')/items?$select=Id,Title," + colProyecto + "," + colCuadrilla + "&$top=5000"
   );
   var porClave = {};
-  (existentes.value || []).forEach(function (it) { porClave[it.Title] = it.Id; });
+  (existentes.value || []).forEach(function (it) {
+    if (String(it[colProyecto] || '').trim() !== proyecto) return;
+    if (String(it[colCuadrilla] || '').trim() !== cuadrilla) return;
+    porClave[it.Title] = it.Id;
+  });
 
   var errores = [], creadas = 0, actualizadas = 0, borradas = 0;
 
   for (var i = 0; i < filas.length; i++) {
     var f = filas[i];
     var campos = {
-      Proyecto: f.Proyecto, Fecha: f.Fecha, Semana: f.Semana,
+      Proyecto: f.Proyecto, Cuadrilla: f.Cuadrilla || cuadrilla,
+      Fecha: f.Fecha, Semana: f.Semana,
       CodProduccion: f.CodProduccion, Descripcion: f.Descripcion, Ud: f.Ud,
       CantidadPlanif: f.CantidadPlanif || 0,
       VentaPlanif: f.VentaPlanif || 0,
-      CostePlanif: f.CostePlanif || 0
+      CostePlanif: f.CostePlanif || 0,
+      PKs: f.PKs || ''
     };
     var body = {};
     Object.keys(campos).forEach(function (col) { body[fm[col] || col] = campos[col]; });
@@ -503,36 +511,106 @@ async function guardarPlanificacion(proyecto, filas) {
 }
 
 // Lee la producción REAL de una obra desde ParteProduccion, cruzándola con
-// Partes para obtener la fecha (ParteProduccion no tiene columna Fecha propia:
-// la fecha vive en la cabecera del parte y se une por ParteId).
+// Partes para obtener fecha y cuadrilla (ParteProduccion no las tiene: viven
+// en la cabecera del parte y se unen por ParteId).
 // Filtrado por proyecto en cliente ($filter sobre columnas no indexadas da HTTP 500).
-// Devuelve [{ ParteId, Fecha, CodProduccion, Cantidad, Importe, Ud }]
+// Devuelve [{ ParteId, Fecha, Cuadrilla, CodProduccion, Cantidad, Importe, Ud, PKInicio, PKFinal }]
 async function leerProduccionReal(proyecto) {
   await ensureReady();
 
-  // 1) Mapa ParteId -> Fecha desde las cabeceras (field_1=ParteId, field_2=Proyecto, field_3=Fecha)
-  var partes = await spGet("/lists/GetByTitle('Partes')/items?$top=5000&$select=field_1,field_2,field_3");
-  var fechaPorParte = {};
+  // 1) Cabeceras: field_1=ParteId, field_2=Proyecto, field_3=Fecha, field_6=Cuadrilla
+  var partes = await spGet("/lists/GetByTitle('Partes')/items?$top=5000&$select=field_1,field_2,field_3,field_6");
+  var cabPorParte = {};
   (partes.value || []).forEach(function (it) {
     if (String(it.field_2 || '').trim() !== proyecto) return;
-    fechaPorParte[String(it.field_1)] = it.field_3 || '';
+    cabPorParte[String(it.field_1)] = { fecha: it.field_3 || '', cuadrilla: (it.field_6 || '').trim() };
   });
 
   // 2) Líneas de producción (field_1=ParteId, field_2=Proyecto, field_3=Cod, field_4=Cantidad)
-  var prod = await spGet("/lists/GetByTitle('ParteProduccion')/items?$top=5000&$select=field_1,field_2,field_3,field_4,Importe,Ud");
+  var prod = await spGet("/lists/GetByTitle('ParteProduccion')/items?$top=5000&$select=field_1,field_2,field_3,field_4,Importe,Ud,PKInicio,PKFinal");
   var out = [];
   (prod.value || []).forEach(function (it) {
     if (String(it.field_2 || '').trim() !== proyecto) return;
+    var cab = cabPorParte[String(it.field_1)] || {};
     out.push({
       ParteId: it.field_1,
-      Fecha: fechaPorParte[String(it.field_1)] || '',
+      Fecha: cab.fecha || '',
+      Cuadrilla: cab.cuadrilla || '',
       CodProduccion: it.field_3 || '',
       Cantidad: it.field_4 || 0,
       Importe: it.Importe || 0,
-      Ud: it.Ud || ''
+      Ud: it.Ud || '',
+      PKInicio: it.PKInicio || '',
+      PKFinal: it.PKFinal || ''
     });
   });
   return out;
+}
+
+// Cuadrillas distintas ya usadas en los partes de una obra (para el selector
+// de la planificación: se planifica POR CUADRILLA, no por obra entera).
+async function leerCuadrillas(proyecto) {
+  await ensureReady();
+  var partes = await spGet("/lists/GetByTitle('Partes')/items?$top=5000&$select=field_2,field_6");
+  var set = {};
+  (partes.value || []).forEach(function (it) {
+    if (String(it.field_2 || '').trim() !== proyecto) return;
+    var c = (it.field_6 || '').trim();
+    if (c) set[c] = 1;
+  });
+  return Object.keys(set).sort();
+}
+
+// Medición por kilómetro desde la lista M_MedicionPK
+// (Proyecto | Codigo | Km | Medicion; Title = Proyecto|Codigo|Km).
+// Filtrado en cliente. Si la lista no existe aún, devuelve [] sin romper.
+var _medPKFieldMapCache = null;
+async function leerMedicionPK(proyecto) {
+  await ensureReady();
+  try {
+    if (!_medPKFieldMapCache) _medPKFieldMapCache = await spFieldMap('M_MedicionPK');
+    var fm = _medPKFieldMapCache;
+    var cP = fm['Proyecto'] || 'field_1', cC = fm['Codigo'] || 'field_2';
+    var cK = fm['Km'] || 'field_3', cM = fm['Medicion'] || 'field_4';
+    var data = await spGet("/lists/GetByTitle('M_MedicionPK')/items?$top=5000&$select=" +
+      [cP, cC, cK, cM].join(','));
+    var out = [];
+    (data.value || []).forEach(function (it) {
+      if (String(it[cP] || '').trim() !== proyecto) return;
+      out.push({ Codigo: it[cC] || '', Km: Number(it[cK]) || 0, Medicion: Number(it[cM]) || 0 });
+    });
+    return out;
+  } catch (e) {
+    console.warn('[SP] M_MedicionPK no disponible:', e && e.message);
+    return [];
+  }
+}
+
+// Carga masiva de mediciones por PK (para la página carga-mediciones.html).
+// filas: [{Proyecto, Codigo, Km, Medicion}]. Upsert por Title=Proyecto|Codigo|Km.
+async function guardarMedicionPK(filas) {
+  await ensureReady();
+  if (!_medPKFieldMapCache) _medPKFieldMapCache = await spFieldMap('M_MedicionPK');
+  var fm = _medPKFieldMapCache;
+  var existentes = await spGet("/lists/GetByTitle('M_MedicionPK')/items?$select=Id,Title&$top=5000");
+  var porClave = {};
+  (existentes.value || []).forEach(function (it) { porClave[it.Title] = it.Id; });
+
+  var errores = [], creadas = 0, actualizadas = 0;
+  for (var i = 0; i < filas.length; i++) {
+    var f = filas[i];
+    var clave = f.Proyecto + '|' + f.Codigo + '|' + f.Km;
+    var body = {};
+    body[fm['Proyecto'] || 'field_1'] = f.Proyecto;
+    body[fm['Codigo'] || 'field_2'] = f.Codigo;
+    body[fm['Km'] || 'field_3'] = Number(f.Km) || 0;
+    body[fm['Medicion'] || 'field_4'] = Number(f.Medicion) || 0;
+    try {
+      if (porClave[clave]) { await spPatch('M_MedicionPK', porClave[clave], body); actualizadas++; }
+      else { body.Title = clave; await spPost('M_MedicionPK', body); creadas++; }
+    } catch (e) { errores.push(clave + ': ' + e.message); }
+  }
+  return { creadas: creadas, actualizadas: actualizadas, errores: errores, ok: errores.length === 0 };
 }
 
 // ═══════════════════════════════════════════════════════
@@ -747,7 +825,10 @@ global.SPTelice = {
   getStockProyecto: getStockProyecto,
   guardarParteEnSP: guardarParteEnSP,
   guardarPlanificacion: guardarPlanificacion,
-  leerProduccionReal: leerProduccionReal
+  leerProduccionReal: leerProduccionReal,
+  leerCuadrillas: leerCuadrillas,
+  leerMedicionPK: leerMedicionPK,
+  guardarMedicionPK: guardarMedicionPK
 };
 
 })(window);

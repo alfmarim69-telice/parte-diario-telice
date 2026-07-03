@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Carga de mediciones por PK · Telice</title>
+<style>
+  :root{ --azul:#1a56a0; --azul2:#134080; --verde:#1a7a50; --border:#dde1e7; --border2:#c8cdd6;
+    --text:#1a2030; --text2:#5a6478; --bg:#f0f2f5; --card:#fff; --font:'Segoe UI',system-ui,sans-serif; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px}
+  header{background:var(--azul2);color:#fff;padding:14px 22px}
+  header h1{font-size:18px}
+  header .sub{font-size:12px;opacity:.85;margin-top:2px}
+  .wrap{max-width:1000px;margin:20px auto;padding:0 16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;margin-bottom:16px}
+  .card h2{font-size:15px;margin-bottom:8px;color:var(--azul2)}
+  .card p{font-size:13px;color:var(--text2);margin-bottom:10px;line-height:1.5}
+  textarea{width:100%;min-height:180px;border:1px solid var(--border2);border-radius:6px;padding:10px;
+    font-family:Consolas,monospace;font-size:12px;resize:vertical}
+  select,button{font-family:var(--font);font-size:13px;padding:8px 14px;border-radius:6px;border:1px solid var(--border2)}
+  button{cursor:pointer}
+  .btn-primario{background:var(--verde);color:#fff;border:none;font-weight:600}
+  .btn-primario:disabled{background:#aaa;cursor:not-allowed}
+  .fila-controles{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}
+  table{border-collapse:collapse;width:100%;font-size:12px;margin-top:12px}
+  th,td{border:1px solid var(--border);padding:5px 8px;text-align:left}
+  th{background:#f4f7fb;font-weight:600}
+  td.num{text-align:right;font-family:Consolas,monospace}
+  .estado{font-size:13px;font-weight:600}
+  .ok{color:var(--verde)} .err{color:#c0392b} .aviso{color:#b06000}
+  code{background:#eef2f7;padding:1px 5px;border-radius:3px;font-size:12px}
+</style>
+<script src="msal-browser.min.js"></script>
+<script src="sp-integracion.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>Carga de mediciones por PK</h1>
+  <div class="sub">Alimenta la lista M_MedicionPK · <span id="estadoSP">Conectando…</span></div>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <h2>1 · Prepara los datos en Excel</h2>
+    <p>Necesitas 3 columnas: <code>Codigo</code> (código de partida de M_Partidas), <code>Km</code>
+    (kilómetro entero: la medición del PK 3+200 al 3+800 va en el Km <b>3</b>) y <code>Medicion</code>
+    (cantidad de esa partida en ese kilómetro). Una fila por partida y km. Copia el rango
+    <b>sin cabecera</b> y pégalo abajo.</p>
+  </div>
+
+  <div class="card">
+    <h2>2 · Pega y revisa</h2>
+    <div class="fila-controles">
+      <label>Obra:
+        <select id="selObra">
+          <option value="23-039">23-039 · Renovación Norte</option>
+          <option value="26-008">26-008 · LAV Lorca-Almería</option>
+        </select>
+      </label>
+    </div>
+    <p style="margin-top:10px">Pega aquí (columnas separadas por tabulador, tal cual salen de Excel):</p>
+    <textarea id="datos" placeholder="US13CYA070&#9;0&#9;45.5&#10;US13CYA070&#9;1&#9;38&#10;US14POS020&#9;0&#9;12"></textarea>
+    <div class="fila-controles">
+      <button onclick="previsualizar()">Previsualizar</button>
+      <span class="estado" id="msgPrev"></span>
+    </div>
+    <div id="preview"></div>
+  </div>
+
+  <div class="card">
+    <h2>3 · Cargar a SharePoint</h2>
+    <p>Hace <i>upsert</i>: si ya existe la combinación obra+código+km la <b>actualiza</b>, si no, la crea.
+    No borra nada. Puedes recargar tantas veces como necesites cuando haya modificados.</p>
+    <div class="fila-controles">
+      <button class="btn-primario" id="btnCargar" onclick="cargar()" disabled>Cargar a M_MedicionPK</button>
+      <span class="estado" id="msgCarga"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+let FILAS = [];
+
+function estadoSP(m){ document.getElementById('estadoSP').textContent = m; }
+
+(async ()=>{
+  if (typeof SPTelice === 'undefined'){ estadoSP('sp-integracion.js no cargado'); return; }
+  try{
+    await SPTelice.ensureReady();
+    if (!SPTelice.currentAccount()) await SPTelice.login();
+    estadoSP('Conectado ✓');
+  }catch(e){ estadoSP('Sin conexión: ' + (e && e.message || '')); }
+})();
+
+function previsualizar(){
+  const proyecto = document.getElementById('selObra').value;
+  const raw = document.getElementById('datos').value.trim();
+  const msg = document.getElementById('msgPrev');
+  FILAS = []; document.getElementById('preview').innerHTML='';
+  document.getElementById('btnCargar').disabled = true;
+  if(!raw){ msg.textContent='Pega los datos primero'; msg.className='estado aviso'; return; }
+
+  const errores = [];
+  raw.split(/\r?\n/).forEach((linea, i)=>{
+    if(!linea.trim()) return;
+    const c = linea.split('\t').map(s=>s.trim());
+    if(c.length < 3){ errores.push(`Línea ${i+1}: faltan columnas (se esperan Codigo, Km, Medicion)`); return; }
+    const km = Number(String(c[1]).replace(',','.'));
+    const med = Number(String(c[2]).replace(',','.'));
+    if(!c[0]){ errores.push(`Línea ${i+1}: código vacío`); return; }
+    if(!Number.isInteger(km) || km < 0){ errores.push(`Línea ${i+1}: Km debe ser entero ≥ 0 (recibido "${c[1]}")`); return; }
+    if(isNaN(med) || med < 0){ errores.push(`Línea ${i+1}: medición no válida ("${c[2]}")`); return; }
+    FILAS.push({ Proyecto: proyecto, Codigo: c[0], Km: km, Medicion: med });
+  });
+
+  if(errores.length){
+    msg.textContent = errores.length + ' errores. Corrige y vuelve a previsualizar.';
+    msg.className = 'estado err';
+    document.getElementById('preview').innerHTML =
+      '<p class="err" style="margin-top:10px;font-size:12px">' + errores.slice(0,15).join('<br>') + '</p>';
+    FILAS = [];
+    return;
+  }
+
+  msg.textContent = FILAS.length + ' filas válidas para ' + proyecto;
+  msg.className = 'estado ok';
+  let html = '<table><tr><th>Proyecto</th><th>Código</th><th>Km</th><th>Medición</th></tr>';
+  FILAS.slice(0,20).forEach(f=>{
+    html += `<tr><td>${f.Proyecto}</td><td>${f.Codigo}</td><td class="num">${f.Km}</td><td class="num">${f.Medicion}</td></tr>`;
+  });
+  html += '</table>';
+  if(FILAS.length>20) html += `<p style="font-size:12px;color:var(--text2);margin-top:6px">… y ${FILAS.length-20} filas más</p>`;
+  document.getElementById('preview').innerHTML = html;
+  document.getElementById('btnCargar').disabled = false;
+}
+
+async function cargar(){
+  const msg = document.getElementById('msgCarga');
+  if(FILAS.length===0){ msg.textContent='Previsualiza primero'; msg.className='estado aviso'; return; }
+  document.getElementById('btnCargar').disabled = true;
+  msg.textContent = 'Cargando ' + FILAS.length + ' filas…'; msg.className='estado';
+  try{
+    const res = await SPTelice.guardarMedicionPK(FILAS);
+    if(res.ok){
+      msg.textContent = `Hecho: ${res.creadas} creadas, ${res.actualizadas} actualizadas.`;
+      msg.className = 'estado ok';
+    }else{
+      console.warn('Errores de carga:', res.errores);
+      msg.textContent = `Terminado con ${res.errores.length} errores (ver consola F12).`;
+      msg.className = 'estado err';
+    }
+  }catch(e){
+    msg.textContent = 'Error: ' + e.message; msg.className='estado err';
+  }
+  document.getElementById('btnCargar').disabled = false;
+}
+</script>
+</body>
+</html>
