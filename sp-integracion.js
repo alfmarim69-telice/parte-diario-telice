@@ -155,7 +155,7 @@ var SP_SCHEMA = {
     _fieldMap:{
       'Clave':          'Title',
       'Proyecto':       'field_1',
-      'Fecha':          'field_2',
+      'Fecha':          'Fecha',
       'Semana':         'field_3',
       'CodProduccion':  'field_4',
       'Descripcion':    'field_5',
@@ -505,7 +505,7 @@ async function guardarPlanificacion(proyecto, cuadrilla, filas) {
     var f = filas[i];
     var campos = {
       Proyecto: f.Proyecto, Cuadrilla: f.Cuadrilla || cuadrilla,
-      Fecha: f.Fecha, Semana: String(f.Semana || ''),
+      Fecha: f.Fecha, Semana: parseInt(f.Semana) || 0,
       CodProduccion: f.CodProduccion, Descripcion: f.Descripcion, Ud: f.Ud,
       CantidadPlanif: f.CantidadPlanif || 0,
       VentaPlanif: f.VentaPlanif || 0,
