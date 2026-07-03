@@ -861,4 +861,3 @@ global.SPTelice = {
 };
 
 })(window);
-
