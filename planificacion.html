@@ -283,6 +283,33 @@ function kmLabel(km){
   return String(km) + '+000 - ' + String(km+1) + '+000';
 }
 
+// Ejecutado real de una partida en un día concreto, filtrado por tramo activo.
+// Si hay tramos seleccionados, solo cuenta las líneas ubicadas en esos kms.
+// Las líneas sin PK solo se muestran cuando NO hay tramo seleccionado.
+function ejecDiaTramo(cod, fechaISO){
+  if(pksSeleccionados.size === 0){
+    // Sin filtro de tramo: muestra todo (ubicado + sin ubicar)
+    return (REAL[cod]||{})[fechaISO];
+  }
+  // Con tramo activo: suma solo lo ubicado en los kms seleccionados ese día
+  let total = 0, hayAlgo = false;
+  REAL_OBRA.forEach(f=>{
+    if(f.CodProduccion !== cod || f.Fecha !== fechaISO) return;
+    if(cuadrillaActiva && f.Cuadrilla !== cuadrillaActiva) return;
+    const a = pkAMetros(f.PKInicio), b = pkAMetros(f.PKFinal);
+    if(a === null && b === null) return; // sin PK → no mostrar en tramo concreto
+    let ini = (a!==null?a:b), fin = (b!==null?b:a);
+    if(fin < ini){ const t=ini; ini=fin; fin=t; }
+    // ¿Algún km seleccionado queda dentro de este tramo?
+    let coincide = false;
+    pksSeleccionados.forEach(km=>{
+      if(ini <= (km+1)*1000 && fin >= km*1000) coincide = true;
+    });
+    if(coincide){ total += f.Cantidad||0; hayAlgo = true; }
+  });
+  return hayAlgo ? total : undefined;
+}
+
 // Medición de una partida en el tramo seleccionado (o total M_MedicionPK si no hay selección)
 function medTramo(cod){
   const porKm = MEDPK[cod];
@@ -563,7 +590,7 @@ function render(){
     dias.forEach(d=>{
       const fin=(d.getDay()===0||d.getDay()===6);
       const v=PLAN[p.cod][iso(d)]||'';
-      const r=(REAL[p.cod]||{})[iso(d)];
+      const r = ejecDiaTramo(p.cod, iso(d));
       // Real ejecutado ese día bajo la casilla de plan; rojo si supera lo planificado
       const mini = (r!==undefined)
         ? `<div class="real-mini ${v!=='' && r>v?'sobre':''}" title="Ejecutado real">✔ ${r.toLocaleString('es-ES')}</div>`
