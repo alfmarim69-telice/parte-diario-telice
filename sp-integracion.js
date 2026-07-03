@@ -151,7 +151,22 @@ var SP_SCHEMA = {
     num:['ImporteEstimado'] },
   Planificacion: { target:'planificacion', proyecto:true,
     cols:['Clave','Proyecto','Cuadrilla','Fecha','Semana','CodProduccion','Descripcion','Ud','CantidadPlanif','VentaPlanif','CostePlanif','PKs'],
-    num:['Semana','CantidadPlanif','VentaPlanif','CostePlanif'] },
+    num:['Semana','CantidadPlanif','VentaPlanif','CostePlanif'],
+    _fieldMap:{
+      'Clave':          'Title',
+      'Proyecto':       'field_1',
+      'Fecha':          'field_2',
+      'Semana':         'field_3',
+      'CodProduccion':  'field_4',
+      'Descripcion':    'field_5',
+      'Ud':             'field_6',
+      'CantidadPlanif': 'field_7',
+      'VentaPlanif':    'field_8',
+      'CostePlanif':    'field_9',
+      'Cuadrilla':      'Cuadrilla',
+      'PKs':            'PKs'
+    }
+  },
   ParteMateriales: { target:'parteMateriales', proyecto:true,
     cols:['Clave','ParteId','Proyecto','CodMaterial','CodControl','Cantidad','TipoMovimiento','CosteUnitario'],
     num:['CodControl','Cantidad','CosteUnitario'],
@@ -467,7 +482,8 @@ async function getPlanifFieldMap() {
 //           Ud, CantidadPlanif, VentaPlanif, CostePlanif, PKs }]
 async function guardarPlanificacion(proyecto, cuadrilla, filas) {
   await ensureReady();
-  var fm = await getPlanifFieldMap();
+  // Usar el mapa fijo del esquema (más fiable que spFieldMap dinámico)
+  var fm = (SP_SCHEMA.Planificacion && SP_SCHEMA.Planificacion._fieldMap) || await getPlanifFieldMap();
   var colProyecto = fm['Proyecto'] || 'field_1';
   var colCuadrilla = fm['Cuadrilla'] || 'Cuadrilla';
 
@@ -489,7 +505,7 @@ async function guardarPlanificacion(proyecto, cuadrilla, filas) {
     var f = filas[i];
     var campos = {
       Proyecto: f.Proyecto, Cuadrilla: f.Cuadrilla || cuadrilla,
-      Fecha: f.Fecha, Semana: f.Semana,
+      Fecha: f.Fecha, Semana: String(f.Semana || ''),
       CodProduccion: f.CodProduccion, Descripcion: f.Descripcion, Ud: f.Ud,
       CantidadPlanif: f.CantidadPlanif || 0,
       VentaPlanif: f.VentaPlanif || 0,
