@@ -169,15 +169,12 @@ let obraActiva = '23-039';
 
 // Partidas de la obra activa (de M_Partidas real, incluye precio venta/coste)
 let PARTIDAS = [];
-// Planificación: cod -> {fechaISO: cantidad}. Separada por obra.
-let PLAN = {};
-const PLAN_POR_OBRA = { '23-039':{}, '26-008':{} };
 let soloPlanificadas = false;
 let filtroTexto = '';
 
 let lunesInicio;
-let DATOS_SP = null;     // caché de la última lectura completa de SharePoint
-let spListo = false;     // true cuando ya hay sesión y datos cargados
+let DATOS_SP = null;
+let spListo = false;
 
 function estadoSP(msg){ const el=document.getElementById('estadoSP'); if(el) el.textContent = msg; }
 
@@ -308,8 +305,18 @@ function renderPKChips(){
 }
 
 function togglePK(km){
+  // Guardar el plan del tramo actual antes de cambiar
+  const pkAnterior = pkKey();
+  PARTIDAS.forEach(p => {
+    if(!PLAN_TRAMOS[p.cod]) PLAN_TRAMOS[p.cod] = {};
+    if(Object.keys(PLAN[p.cod]||{}).length > 0)
+      PLAN_TRAMOS[p.cod][pkAnterior] = {...PLAN[p.cod]};
+    else
+      delete PLAN_TRAMOS[p.cod][pkAnterior];
+  });
   if(pksSeleccionados.has(km)) pksSeleccionados.delete(km);
   else pksSeleccionados.add(km);
+  actualizarPlanActivo();
   renderPKChips();
   render();
 }
@@ -356,14 +363,36 @@ async function poblarCuadrillas(cod){
 }
 
 // Carga en PLAN la planificación guardada de la obra+cuadrilla activas
+// PLAN separado por tramo: cod -> {pkKey -> {fechaISO: cantidad}}
+// pkKey es el string del tramo activo, p.ej. "0-1" (kms separados por coma si son varios)
+let PLAN = {};        // vista activa = plan del tramo seleccionado
+let PLAN_TRAMOS = {}; // toda la obra: cod -> {pkKey -> {fecha: cantidad}}
+
+function pkKey(){
+  // Clave canónica del conjunto de PKs seleccionados (vacío = sin tramo = "todos")
+  return [...pksSeleccionados].sort((a,b)=>a-b).join(',');
+}
+
 function cargarPlanCuadrilla(){
-  PLAN = {};
-  PARTIDAS.forEach(p => { PLAN[p.cod] = {}; });
+  PLAN_TRAMOS = {};
+  PARTIDAS.forEach(p => { PLAN_TRAMOS[p.cod] = {}; });
   (DATOS_SP && DATOS_SP.planificacion || []).forEach(row => {
     if ((row.Proyecto||'').trim() !== obraActiva) return;
     if ((row.Cuadrilla||'').trim() !== cuadrillaActiva) return;
-    if (!PLAN[row.CodProduccion]) PLAN[row.CodProduccion] = {};
-    PLAN[row.CodProduccion][row.Fecha] = row.CantidadPlanif;
+    const pk = (row.PKs||'').trim();
+    if (!PLAN_TRAMOS[row.CodProduccion]) PLAN_TRAMOS[row.CodProduccion] = {};
+    if (!PLAN_TRAMOS[row.CodProduccion][pk]) PLAN_TRAMOS[row.CodProduccion][pk] = {};
+    PLAN_TRAMOS[row.CodProduccion][pk][row.Fecha] = row.CantidadPlanif;
+  });
+  actualizarPlanActivo();
+}
+
+// Carga en PLAN (vista activa) solo las filas del tramo seleccionado
+function actualizarPlanActivo(){
+  const pk = pkKey();
+  PLAN = {};
+  PARTIDAS.forEach(p => {
+    PLAN[p.cod] = (PLAN_TRAMOS[p.cod] && PLAN_TRAMOS[p.cod][pk]) ? {...PLAN_TRAMOS[p.cod][pk]} : {};
   });
 }
 
@@ -570,8 +599,18 @@ function render(){
 function onInput(inp){
   const cod=inp.dataset.cod, f=inp.dataset.fecha;
   const v=parseFloat(inp.value);
-  if(v&&v>0){ PLAN[cod][f]=v; inp.classList.add('lleno'); }
-  else { delete PLAN[cod][f]; inp.classList.remove('lleno'); }
+  const pk=pkKey();
+  if(v&&v>0){
+    PLAN[cod][f]=v;
+    if(!PLAN_TRAMOS[cod]) PLAN_TRAMOS[cod]={};
+    if(!PLAN_TRAMOS[cod][pk]) PLAN_TRAMOS[cod][pk]={};
+    PLAN_TRAMOS[cod][pk][f]=v;
+    inp.classList.add('lleno');
+  }else{
+    delete PLAN[cod][f];
+    if(PLAN_TRAMOS[cod]&&PLAN_TRAMOS[cod][pk]) delete PLAN_TRAMOS[cod][pk][f];
+    inp.classList.remove('lleno');
+  }
   recalcular();
   marcarSinGuardar();
 }
@@ -640,23 +679,36 @@ function marcarSinGuardar(){
 
 async function guardar(){
   if(!cuadrillaActiva){
-    alert('Selecciona una cuadrilla antes de guardar: la planificación es por cuadrilla, no por obra entera.');
+    alert('Selecciona una cuadrilla antes de guardar.');
     return;
   }
-  const pksTxt = [...pksSeleccionados].sort((a,b)=>a-b).map(kmLabel).join(', ');
-  // Genera TODAS las filas del estado actual de esta obra+cuadrilla
+  // Sincronizar el tramo activo antes de guardar
+  const pkActual = pkKey();
+  PARTIDAS.forEach(p => {
+    if(!PLAN_TRAMOS[p.cod]) PLAN_TRAMOS[p.cod] = {};
+    if(Object.keys(PLAN[p.cod]||{}).length > 0)
+      PLAN_TRAMOS[p.cod][pkActual] = {...PLAN[p.cod]};
+    else
+      delete PLAN_TRAMOS[p.cod][pkActual];
+  });
+
+  // Generar filas de TODOS los tramos de esta obra+cuadrilla
   const filas=[];
   PARTIDAS.forEach(p=>{
     const precio = PRECIOS[p.cod] || { pv:0, cu:0 };
-    Object.entries(PLAN[p.cod]).forEach(([f,cant])=>{
-      filas.push({
-        Clave:`${obraActiva}|${cuadrillaActiva}|${p.cod}|${f}`,
-        Proyecto:obraActiva, Cuadrilla:cuadrillaActiva,
-        Fecha:f, Semana:semanaISO(new Date(f+'T00:00:00')),
-        CodProduccion:p.cod, Descripcion:p.desc, Ud:p.ud, CantidadPlanif:cant,
-        VentaPlanif: +(cant * precio.pv).toFixed(2),
-        CostePlanif: +(cant * precio.cu).toFixed(2),
-        PKs: pksTxt
+    const tramosPartida = PLAN_TRAMOS[p.cod] || {};
+    Object.entries(tramosPartida).forEach(([pk, dias])=>{
+      Object.entries(dias).forEach(([f, cant])=>{
+        if(!cant) return;
+        filas.push({
+          Clave:`${obraActiva}|${cuadrillaActiva}|${p.cod}|${f}|${pk}`,
+          Proyecto:obraActiva, Cuadrilla:cuadrillaActiva,
+          Fecha:f, Semana:semanaISO(new Date(f+'T00:00:00')),
+          CodProduccion:p.cod, Descripcion:p.desc, Ud:p.ud, CantidadPlanif:cant,
+          VentaPlanif: +(cant * precio.pv).toFixed(2),
+          CostePlanif: +(cant * precio.cu).toFixed(2),
+          PKs: pk
+        });
       });
     });
   });
