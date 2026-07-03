@@ -150,7 +150,7 @@ var SP_SCHEMA = {
     cols:['Clave','Proyecto','Codigo','Categoria','Concepto','ImporteEstimado','Observaciones'],
     num:['ImporteEstimado'] },
   Planificacion: { target:'planificacion', proyecto:true,
-    cols:['Clave','Proyecto','Fecha','Semana','CodProduccion','Descripcion','Ud','CantidadPlanif','VentaPlanif','CostePlanif','Cuadrilla','PKs'],
+    cols:['Clave','Proyecto','Cuadrilla','Fecha','Semana','CodProduccion','Descripcion','Ud','CantidadPlanif','VentaPlanif','CostePlanif','PKs'],
     num:['Semana','CantidadPlanif','VentaPlanif','CostePlanif'] },
   ParteMateriales: { target:'parteMateriales', proyecto:true,
     cols:['Clave','ParteId','Proyecto','CodMaterial','CodControl','Cantidad','TipoMovimiento','CosteUnitario'],
@@ -442,9 +442,12 @@ async function deleteMaterial(spId) {
 // columna (igual que en la lectura), así no dependemos de que la lista se
 // haya creado con field_1, field_2... — funciona la haya creado quien la haya
 // creado (UI de SharePoint o API).
-var _planifFieldMapCache = null;
+var _planifFieldMapCache = null;  // se resetea aquí: null fuerza recarga en cada nueva sesión
 async function getPlanifFieldMap() {
-  if (!_planifFieldMapCache) _planifFieldMapCache = await spFieldMap('Planificacion');
+  if (!_planifFieldMapCache) {
+    _planifFieldMapCache = await spFieldMap('Planificacion');
+    console.log('[SP] FieldMap Planificacion:', JSON.stringify(_planifFieldMapCache));
+  }
   return _planifFieldMapCache;
 }
 
