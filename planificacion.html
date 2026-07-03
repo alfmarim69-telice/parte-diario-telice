@@ -152,7 +152,8 @@
     <span><i class="sw" style="background:#eaf3e3"></i> Día planificado</span>
     <span><i class="sw" style="background:var(--finde)"></i> Fin de semana</span>
     <span style="color:var(--verde);font-weight:600">✔ n = ejecutado real ese día (de los partes)</span>
-    <span>Columnas Plan / Real / Desv %: acumulados de la partida · desviación = (real − plan) / plan</span>
+    <span>"Med. tramo" muestra lo PENDIENTE del tramo: medición − ejecutado real ubicado por PK · ✔ Completado si no queda nada</span>
+    <span style="color:#b06000">⚠ = hay producción ejecutada sin PK en el parte, no descontada (pasa el ratón para ver cuánta)</span>
   </div>
 </div>
 
@@ -214,6 +215,64 @@ let REAL = {};
 // Filas crudas del ejecutado de la obra (todas las cuadrillas), para refiltrar
 // al cambiar de cuadrilla sin volver a leer SharePoint.
 let REAL_OBRA = [];
+// Ejecutado real UBICADO por km (de TODA la obra, cualquier cuadrilla):
+// cod -> {km: cantidad}. Se usa para calcular lo PENDIENTE de cada tramo.
+let REALPK = {};
+// Ejecutado sin PK informado en el parte (no se puede ubicar): cod -> cantidad
+let REAL_SIN_PK = {};
+
+// "2+300" -> 2300 m · "3" -> 3000 m (se interpreta km) · "3450" -> 3450 m
+function pkAMetros(s){
+  if(s===null || s===undefined) return null;
+  s = String(s).trim().replace(',', '.');
+  if(!s) return null;
+  if(s.includes('+')){
+    const [k,m] = s.split('+');
+    const kk = parseFloat(k);
+    if(isNaN(kk)) return null;
+    return kk*1000 + (parseFloat(m)||0);
+  }
+  const n = parseFloat(s);
+  if(isNaN(n)) return null;
+  return n < 100 ? n*1000 : n;   // sin '+': <100 se asume km, si no metros
+}
+
+// Reparte una cantidad ejecutada entre los km que cubre su tramo PKInicio-PKFinal
+// (proporcional a la longitud en cada km). Sin PKs -> cubo "sin ubicar".
+function construirRealPorKm(){
+  REALPK = {}; REAL_SIN_PK = {};
+  const add = (cod, km, v)=>{
+    if(!REALPK[cod]) REALPK[cod] = {};
+    REALPK[cod][km] = (REALPK[cod][km]||0) + v;
+  };
+  REAL_OBRA.forEach(f=>{
+    if(!f.CodProduccion || !f.Cantidad) return;
+    const a = pkAMetros(f.PKInicio), b = pkAMetros(f.PKFinal);
+    if(a===null && b===null){
+      REAL_SIN_PK[f.CodProduccion] = (REAL_SIN_PK[f.CodProduccion]||0) + f.Cantidad;
+      return;
+    }
+    let ini = (a!==null?a:b), fin = (b!==null?b:a);
+    if(fin < ini){ const t=ini; ini=fin; fin=t; }
+    if(fin === ini){ add(f.CodProduccion, Math.floor(ini/1000), f.Cantidad); return; }
+    const total = fin - ini;
+    for(let km=Math.floor(ini/1000); km<=Math.floor((fin-0.001)/1000); km++){
+      const s = Math.max(ini, km*1000), e = Math.min(fin, (km+1)*1000);
+      if(e > s) add(f.CodProduccion, km, f.Cantidad*(e-s)/total);
+    }
+  });
+}
+
+// Ejecutado real de una partida dentro del tramo seleccionado (o toda la obra si no hay selección)
+function ejecTramo(cod){
+  const porKm = REALPK[cod];
+  if(!porKm) return 0;
+  let t = 0;
+  Object.entries(porKm).forEach(([km, v])=>{
+    if(pksSeleccionados.size === 0 || pksSeleccionados.has(Number(km))) t += v;
+  });
+  return t;
+}
 
 // Cuadrilla activa: LA PLANIFICACIÓN ES POR OBRA + CUADRILLA
 let cuadrillaActiva = '';
@@ -353,7 +412,7 @@ async function cargarObra(cod){
   }
   renderPKChips();
 
-  REAL = {}; REAL_OBRA = [];
+  REAL = {}; REAL_OBRA = []; REALPK = {}; REAL_SIN_PK = {};
   render();
   cargarEjecutadoReal(cod);
 }
@@ -368,6 +427,7 @@ async function cargarEjecutadoReal(cod){
     const filas = await SPTelice.leerProduccionReal(cod);
     if (obraActiva !== cod) return;   // el usuario cambió de obra mientras cargaba
     REAL_OBRA = filas;
+    construirRealPorKm();
     filtrarRealPorCuadrilla();
     estadoSP('Conectado ✓ · plan + ejecutado');
     render();
@@ -454,7 +514,22 @@ function render(){
     body+=`<td class="col-med-cell"><b>${p.med.toLocaleString('es-ES')}</b> ${p.ud}</td>`;
     if(hayPK){
       const mt = medTramo(p.cod);
-      body+=`<td class="col-medtramo-cell" title="Medición en el tramo seleccionado">${mt===null?'—':mt.toLocaleString('es-ES')+' '+p.ud}</td>`;
+      if(mt === null){
+        body+=`<td class="col-medtramo-cell">—</td>`;
+      } else {
+        const ej = ejecTramo(p.cod);
+        const pend = Math.max(0, +(mt - ej).toFixed(2));
+        const sinPK = REAL_SIN_PK[p.cod];
+        const aviso = sinPK ? ` title="Ojo: además hay ${sinPK.toLocaleString('es-ES')} ${p.ud} ejecutadas SIN PK en el parte (no descontadas aquí)"` : ` title="Pendiente en el tramo = medición del tramo − ejecutado real ubicado"`;
+        if(ej > 0.001){
+          const completado = pend <= 0.001;
+          body+=`<td class="col-medtramo-cell"${aviso} style="${completado?'background:#e6f4ed':''}">`+
+            `${completado ? '<span style="color:var(--verde)">✔ Completado</span>' : '<b>'+pend.toLocaleString('es-ES')+'</b> '+p.ud}`+
+            `<div style="font-size:10px;font-weight:400;color:var(--text2)">de ${mt.toLocaleString('es-ES')} · ✔ ${(+ej.toFixed(2)).toLocaleString('es-ES')} ejec.${sinPK?' ⚠':''}</div></td>`;
+        } else {
+          body+=`<td class="col-medtramo-cell"${aviso}>${mt.toLocaleString('es-ES')} ${p.ud}${sinPK?' <span style="color:#b06000">⚠</span>':''}</td>`;
+        }
+      }
     }
     dias.forEach(d=>{
       const fin=(d.getDay()===0||d.getDay()===6);
