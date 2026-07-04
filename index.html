@@ -1283,7 +1283,7 @@
           <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:4px;">TASK BC ASOCIADA</div>
           <div id="prod_task_desc" style="font-size:12px;color:var(--accent);background:var(--blue2);padding:6px 10px;border-radius:4px;border-left:2px solid var(--accent);"></div>
         </div>
-        <div class="field-grid" style="margin-bottom:8px;">
+        <div class="field-grid" style="margin-bottom:8px;" id="prod_cant_wrap">
           <div class="field">
             <label>Cantidad ejecutada</label>
             <input type="number" id="prod_cant" min="0" step="0.01" placeholder="0.00">
@@ -1292,6 +1292,15 @@
             <label>Unidad</label>
             <input type="text" id="prod_ud" readonly style="color:var(--text3);">
           </div>
+        </div>
+
+        <!-- Bloque de TAREAS (aparece si la partida tiene despiece en M_TareasPartida) -->
+        <div id="prod_tareas_wrap" style="display:none;margin-bottom:8px;border:1px solid var(--border2);border-radius:var(--r);padding:10px;background:var(--bg3);">
+          <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">
+            🔧 Producción por tareas
+          </div>
+          <div id="prod_tareas_lista"></div>
+          <div id="prod_tareas_equiv" style="margin-top:8px;padding:8px 10px;background:var(--blue2);border-radius:4px;font-size:12px;color:var(--accent);font-weight:600;"></div>
         </div>
         <div class="field-grid cols-3" style="margin-bottom:8px;">
           <div class="field">
@@ -1984,6 +1993,9 @@ function cargarObra(cod) {
   // Repoblar el selector de Tasks (códigos de control de la obra activa)
   if (typeof poblarSelectTasks === 'function') poblarSelectTasks();
   if (typeof poblarSelectAlquileres === 'function') poblarSelectAlquileres();
+  // Despiece de partidas en tareas (M_TareasPartida) + acumulado ejecutado —
+  // asíncrono, no bloquea; si falla se sigue en modo clásico
+  if (typeof cargarTareasPartida === 'function') cargarTareasPartida();
   if (typeof poblarSelectMOExterna === 'function') poblarSelectMOExterna();
   if (window.activarBuscadores) activarBuscadores();
 
@@ -3706,6 +3718,59 @@ function renderMaquinaria() {
 // ═══════════════════════════════════════════
 // PRODUCCIÓN
 // ═══════════════════════════════════════════
+
+// Despiece de partidas en tareas con peso (%): cod -> [{Orden, Tarea, Peso}]
+// Se carga de M_TareasPartida al conectar. Si una partida no tiene despiece,
+// el formulario funciona en modo clásico (una sola cantidad).
+let TAREAS_PARTIDA = {};
+// Acumulado ya ejecutado por tarea (de partes anteriores): cod -> {tarea: cant}
+let ACUM_TAREAS = {};
+
+async function cargarTareasPartida() {
+  if (typeof SPTelice === 'undefined' || !navigator.onLine || !OBRA_ACTIVA) return;
+  try {
+    if (SPTelice.leerTareasPartida) {
+      TAREAS_PARTIDA = {};
+      (await SPTelice.leerTareasPartida(OBRA_ACTIVA.codigo)).forEach(t => {
+        if (!TAREAS_PARTIDA[t.Codigo]) TAREAS_PARTIDA[t.Codigo] = [];
+        TAREAS_PARTIDA[t.Codigo].push({ Orden: t.Orden, Tarea: t.Tarea, Peso: t.Peso });
+      });
+    }
+    if (SPTelice.leerProduccionTareas) {
+      ACUM_TAREAS = await SPTelice.leerProduccionTareas(OBRA_ACTIVA.codigo);
+    }
+  } catch (e) { console.warn('[Tareas] no disponibles:', e && e.message); }
+}
+
+// Suma lo reportado por tarea en el parte ACTUAL (aún sin enviar), para que
+// el acumulado mostrado incluya lo que el jefe de equipo lleva metido hoy
+function acumEnParteActual(cod, tarea) {
+  let t = 0;
+  (state.produccion || []).forEach(p => {
+    if (p.partida_cod !== cod || !p.tareas) return;
+    p.tareas.forEach(ta => { if (ta.tarea === tarea) t += ta.cant || 0; });
+  });
+  return t;
+}
+
+function equivalenteTareas(cod) {
+  const defs = TAREAS_PARTIDA[cod] || [];
+  let eq = 0;
+  defs.forEach((d, i) => {
+    const inp = document.getElementById('prod_tarea_' + i);
+    const v = inp ? (parseFloat(inp.value) || 0) : 0;
+    eq += v * (d.Peso || 0) / 100;
+  });
+  return Math.round(eq * 100) / 100;
+}
+
+function refrescarEquivalente(cod) {
+  const p = PARTIDAS_CERT.find(x => x.cod === cod);
+  const eq = equivalenteTareas(cod);
+  const el = document.getElementById('prod_tareas_equiv');
+  if (el) el.textContent = `Producción equivalente: ${eq.toLocaleString('es-ES', {maximumFractionDigits:2})} ${p ? p.ud : ''}  (Σ cantidad × peso)`;
+}
+
 function onPartidaChange() {
   const sel = document.getElementById('prod_partida');
   const opt = sel.selectedOptions[0];
@@ -3730,6 +3795,51 @@ function onPartidaChange() {
   info.style.display = 'block';
   taskDesc.innerHTML = `<strong>${partida.cod}</strong> · ${partida.cap || ''}`
     + `<br><span style="font-size:10px;color:var(--text3);">Precio venta: ${partida.pu.toFixed(4)} €/${partida.ud} · Medición ppto: ${partida.med.toLocaleString('es-ES')} ${partida.ud}</span>`;
+
+  // ── Modo TAREAS: si la partida tiene despiece, una casilla por tarea ──
+  const tareasWrap = document.getElementById('prod_tareas_wrap');
+  const tareasLista = document.getElementById('prod_tareas_lista');
+  const cantWrap = document.getElementById('prod_cant_wrap');
+  const defs = TAREAS_PARTIDA[partida.cod] || [];
+  if (defs.length > 0) {
+    cantWrap.style.display = 'none';   // la cantidad única se sustituye por el desglose
+    tareasWrap.style.display = 'block';
+    tareasLista.innerHTML = defs.map((d, i) => {
+      const acum = ((ACUM_TAREAS[partida.cod] || {})[d.Tarea] || 0) + acumEnParteActual(partida.cod, d.Tarea);
+      const pend = Math.max(0, partida.med - acum);
+      const completa = partida.med > 0 && pend <= 0.001;
+      const pill = completa
+        ? '<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;background:var(--green2);color:var(--green);">✔ COMPLETA</span>'
+        : (acum > 0
+          ? '<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FFF3E0;color:#E65100;">EN CURSO</span>'
+          : '<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;background:var(--bg4);color:var(--text3);">PENDIENTE</span>');
+      const pct = partida.med > 0 ? Math.min(100, acum / partida.med * 100) : 0;
+      return `
+      <div style="margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+          <span style="flex:1;font-size:12px;font-weight:600;">${d.Tarea} <span style="color:var(--text3);font-weight:400;">(${d.Peso}%)</span></span>
+          ${pill}
+          <input type="number" id="prod_tarea_${i}" min="0" step="0.01" placeholder="0"
+            oninput="refrescarEquivalente('${partida.cod.replace(/'/g,"\\'")}')"
+            style="width:84px;padding:5px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--bg2);font-size:12px;text-align:right;" ${completa?'':''}>
+          <span style="font-size:11px;color:var(--text3);min-width:22px;">${partida.ud}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;height:5px;background:var(--bg4);border-radius:3px;overflow:hidden;">
+            <div style="height:100%;width:${pct.toFixed(0)}%;background:${completa?'var(--green)':'var(--accent)'};border-radius:3px;"></div>
+          </div>
+          <span style="font-size:10px;color:var(--text3);font-family:var(--mono);white-space:nowrap;">
+            ejec. ${acum.toLocaleString('es-ES',{maximumFractionDigits:1})} · pend. ${pend.toLocaleString('es-ES',{maximumFractionDigits:1})}
+          </span>
+        </div>
+      </div>`;
+    }).join('');
+    refrescarEquivalente(partida.cod);
+  } else {
+    cantWrap.style.display = '';
+    tareasWrap.style.display = 'none';
+    tareasLista.innerHTML = '';
+  }
 
   // Mostrar bloque de material si hay material asociado en el catálogo
   const material = getMaterialDePartida(partida.cod);
@@ -3773,8 +3883,23 @@ async function addProduccion() {
   const partida = PARTIDAS_CERT[selData.idx];
   if (!partida) { showToast('Partida no encontrada', 'error'); return; }
 
-  const cant = parseFloat(document.getElementById('prod_cant').value);
-  if (!cant || cant <= 0) { showToast('Introduce la cantidad', 'error'); return; }
+  // ── Cantidad: modo tareas (equivalente) o modo clásico ──
+  const defsTareas = TAREAS_PARTIDA[partida.cod] || [];
+  let cant, tareasReportadas = null;
+  if (defsTareas.length > 0) {
+    tareasReportadas = defsTareas.map((d, i) => {
+      const inp = document.getElementById('prod_tarea_' + i);
+      return { tarea: d.Tarea, peso: d.Peso, cant: inp ? (parseFloat(inp.value) || 0) : 0 };
+    }).filter(t => t.cant > 0);
+    if (tareasReportadas.length === 0) { showToast('Introduce la cantidad de al menos una tarea', 'error'); return; }
+    cant = 0;
+    tareasReportadas.forEach(t => { cant += t.cant * (t.peso || 0) / 100; });
+    cant = Math.round(cant * 100) / 100;
+    if (cant <= 0) { showToast('La producción equivalente es 0 — revisa los pesos de las tareas', 'error'); return; }
+  } else {
+    cant = parseFloat(document.getElementById('prod_cant').value);
+    if (!cant || cant <= 0) { showToast('Introduce la cantidad', 'error'); return; }
+  }
 
   const material = getMaterialDePartida(partida.cod);
   const matCantInput = document.getElementById('prod_mat_cant');
@@ -3819,6 +3944,7 @@ async function addProduccion() {
     ud: partida.ud,
     pu: partida.pu,
     cant,
+    tareas: tareasReportadas,
     importe: Math.round(cant * partida.pu * 100) / 100,
     task_grupo: partida.te || partida.ts || partida.ti || partida.to || '',
     tipo_grupo: 'CERT',
@@ -3887,16 +4013,45 @@ function renderProduccion() {
     const div = document.createElement('div');
     div.className = 'data-row';
     div.style.gridTemplateColumns = '1fr';
+
+    // ── Bloque de tareas (si la línea lleva desglose) ──
+    let tareasHTML = '', pillHTML = '';
+    if (p.tareas && p.tareas.length) {
+      const defs = TAREAS_PARTIDA[p.partida_cod] || [];
+      const maxCant = Math.max(...p.tareas.map(t => t.cant || 0), 0.0001);
+      const pctCiclo = Math.min(100, (p.cant / maxCant) * 100);
+      const ciclo = defs.length > 0 && p.tareas.length >= defs.length;
+      pillHTML = ciclo
+        ? '<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:9px;background:var(--green2);color:var(--green);">CICLO COMPLETO</span>'
+        : '<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:9px;background:#FFF3E0;color:#E65100;">EN CURSO</span>';
+      const chips = (defs.length ? defs : p.tareas.map(t=>({Tarea:t.tarea}))).map(d => {
+        const rep = p.tareas.find(t => t.tarea === d.Tarea || t.tarea === d.tarea);
+        return rep
+          ? `<span style="font-size:10px;padding:2px 8px;border-radius:9px;background:var(--blue2);color:var(--accent);font-weight:600;">✔ ${d.Tarea || d.tarea}: ${rep.cant.toLocaleString('es-ES',{maximumFractionDigits:2})}</span>`
+          : `<span style="font-size:10px;padding:2px 8px;border-radius:9px;background:var(--bg4);color:var(--text3);">${d.Tarea}: —</span>`;
+      }).join(' ');
+      tareasHTML = `
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin:6px 0 5px;">${chips}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
+          <div style="flex:1;height:5px;background:var(--bg4);border-radius:3px;overflow:hidden;">
+            <div style="height:100%;width:${pctCiclo.toFixed(0)}%;background:${ciclo?'var(--green)':'var(--accent)'};"></div>
+          </div>
+          <span style="font-size:10px;color:var(--text3);font-family:var(--mono);white-space:nowrap;">ciclo ${pctCiclo.toFixed(0)}%</span>
+        </div>`;
+    }
+
     div.innerHTML = `
       <button class="del-btn" onclick="delItem('produccion',${i})">×</button>
       <div style="padding-right:24px;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-wrap:wrap;">
           <span class="row-tag">${p.partida_cod}</span>
+          ${pillHTML}
           ${p.task_ejec ? `<span style="font-family:var(--mono);font-size:10px;color:var(--blue);background:var(--blue2);padding:2px 6px;border-radius:3px;">Task ${p.task_ejec}</span>` : ''}
         </div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:5px;line-height:1.4;">${p.partida_desc}</div>
+        ${tareasHTML}
         <div class="row-meta">
-          <span class="meta-item">Cant: <span style="color:var(--accent);font-weight:500;">${p.cant} ${p.ud}</span></span>
+          <span class="meta-item">${p.tareas && p.tareas.length ? 'Equiv.' : 'Cant.'}: <span style="color:var(--accent);font-weight:500;">${p.cant} ${p.ud}</span></span>
           <span class="meta-item">Importe EC: <span>${p.importe.toLocaleString('es-ES',{minimumFractionDigits:2})} €</span></span>
           ${p.lugar ? `<span class="meta-item">📍 <span>${p.lugar}</span></span>` : ''}
           ${(p.pk_ini || p.pk_fin) ? `<span class="meta-item">PK: <span>${p.pk_ini || '—'}${p.pk_fin ? ' → ' + p.pk_fin : ''}</span></span>` : ''}
