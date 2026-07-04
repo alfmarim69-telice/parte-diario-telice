@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mediciones por PK · Parte Diario Telice</title>
+<style>
+  :root{ --azul:#1F3864; --azul2:#2d4a7c; --verde:#548235; --naranja:#C55A11;
+    --bg:#f4f5f7; --card:#ffffff; --border:#e3e6ea; --border2:#cfd4da;
+    --text:#1a2433; --text2:#5b6573; --hoy:#eef4ff;
+    --font:'Segoe UI',system-ui,-apple-system,sans-serif; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13px}
+  header{background:var(--azul);color:#fff;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  header h1{font-size:17px;font-weight:600;letter-spacing:.2px}
+  header .sub{font-size:11px;opacity:.85;margin-top:2px}
+  header select{font-family:var(--font);font-size:13px;padding:8px 12px;border-radius:6px;border:none;font-weight:600;color:var(--azul)}
+  .toolbar{background:var(--card);border-bottom:1px solid var(--border);padding:12px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:20}
+  .toolbar input[type=text]{border:1px solid var(--border2);border-radius:6px;padding:6px 10px;font-family:var(--font);font-size:13px;width:200px}
+  .toolbar label{font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px}
+  .toolbar input[type=number]{border:1px solid var(--border2);border-radius:6px;padding:6px 8px;width:64px;font-family:var(--font);font-size:13px}
+  .spacer{flex:1}
+  .estado{font-size:12px;font-weight:600;color:var(--text2)}
+  .btn-guardar{background:var(--verde);color:#fff;border:none;border-radius:6px;padding:9px 18px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer}
+  .btn-guardar:disabled{background:#aab2ac;cursor:not-allowed}
+  .wrap{padding:16px 22px;overflow-x:auto}
+  table{border-collapse:collapse;background:var(--card);min-width:100%}
+  thead th{background:var(--azul);color:#fff;padding:9px 8px;font-size:11px;font-weight:600;text-align:center;position:sticky;top:0;white-space:nowrap}
+  thead th.col-cod{text-align:left;min-width:110px}
+  thead th.col-desc{text-align:left;min-width:230px}
+  thead th.col-med{text-align:right;min-width:95px}
+  thead th.col-tot{text-align:right;min-width:95px;background:var(--azul2)}
+  tbody td{border-bottom:1px solid var(--border);padding:4px 6px}
+  td.cod{font-family:Consolas,monospace;font-size:12px;font-weight:600;white-space:nowrap}
+  td.desc{font-size:12px;color:var(--text2);max-width:280px}
+  td.med{text-align:right;font-weight:600;white-space:nowrap}
+  td.celda{padding:2px}
+  td.celda input{width:72px;border:1px solid transparent;border-radius:4px;padding:6px 4px;text-align:right;font-family:Consolas,monospace;font-size:12px;background:transparent}
+  td.celda input:hover{border-color:var(--border2)}
+  td.celda input:focus{outline:none;border-color:var(--azul);background:#fff}
+  td.celda input.lleno{background:#eef4fb;font-weight:600}
+  td.celda input.cambiado{background:#fdf3e3;border-color:var(--naranja);font-weight:700}
+  td.tot{text-align:right;font-weight:700;white-space:nowrap;background:#f7f9fb}
+  td.tot.ok{color:var(--verde)}
+  td.tot.mal{color:#c0392b}
+  tr.cap-row td{background:#e9edf3;font-weight:700;font-size:11px;letter-spacing:.4px;text-transform:uppercase;padding:7px 10px;color:var(--azul)}
+  tfoot td{background:#f0f3f7;font-weight:700;text-align:right;padding:7px 6px;font-size:12px;border-top:2px solid var(--border2)}
+  tfoot td.lbl{text-align:right;color:var(--text2)}
+  .leyenda{display:flex;gap:18px;margin-top:12px;font-size:11px;color:var(--text2);flex-wrap:wrap}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--azul);color:#fff;padding:11px 22px;border-radius:8px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .3s}
+  .toast.show{opacity:1}
+</style>
+<script src="msal-browser.min.js"></script>
+<script src="sp-integracion.js"></script>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Mediciones por PK</h1>
+    <div class="sub">Parte Diario · Telice · <span id="estadoSP">Conectando con SharePoint…</span></div>
+  </div>
+  <select id="selObra" onchange="cargarObra(this.value)">
+    <option value="23-039">23-039 · Renovación Norte</option>
+    <option value="26-008">26-008 · LAV Lorca-Almería · Catenaria</option>
+  </select>
+</header>
+
+<div class="toolbar">
+  <input type="text" id="buscador" placeholder="Buscar partida..." oninput="onFiltro()">
+  <label>Kms de la obra:
+    <input type="number" id="numKms" min="1" max="200" value="8" onchange="onNumKms()">
+  </label>
+  <label><input type="checkbox" id="chkSoloMed" onchange="render()"> Solo partidas con medición por PK</label>
+  <div class="spacer"></div>
+  <span class="estado" id="estado">Listo</span>
+  <button class="btn-guardar" id="btnGuardar" onclick="guardar()" disabled>Guardar cambios</button>
+</div>
+
+<div class="wrap">
+  <table>
+    <thead id="thead"></thead>
+    <tbody id="tbody"></tbody>
+    <tfoot id="tfoot"></tfoot>
+  </table>
+  <div class="leyenda">
+    <span>Cada celda = medición de esa partida en ese kilómetro · vaciar o poner 0 anula la medición del km</span>
+    <span style="color:var(--naranja);font-weight:600">Celda naranja = modificada sin guardar</span>
+    <span>La columna "Σ PKs" compara con la medición de proyecto: verde si cuadra, rojo si difiere</span>
+  </div>
+</div>
+
+<div class="toast" id="toast">Cambios guardados</div>
+
+<script>
+let obraActiva = '23-039';
+let PARTIDAS = [];        // de M_Partidas: {cod, cap, desc, ud, med}
+let MEDPK = {};           // estado guardado en SP: cod -> {km: medicion}
+let EDIT = {};            // estado en edición: cod -> {km: medicion}
+let CAMBIOS = {};         // celdas tocadas: 'cod|km' -> true
+let filtroTexto = '';
+let numKms = 8;
+let DATOS_SP = null;
+let spListo = false;
+
+function estadoSP(m){ const el=document.getElementById('estadoSP'); if(el) el.textContent=m; }
+function setEstado(m, color){ const el=document.getElementById('estado'); el.textContent=m; el.style.color=color||'var(--text2)'; }
+
+async function conectarSP(){
+  if (typeof SPTelice === 'undefined'){ estadoSP('Sin conexión (sp-integracion.js no cargado)'); return false; }
+  try{
+    estadoSP('Conectando…');
+    await SPTelice.ensureReady();
+    if (!SPTelice.currentAccount()){ estadoSP('Iniciando sesión…'); await SPTelice.login(); }
+    estadoSP('Leyendo M_Partidas…');
+    DATOS_SP = await SPTelice.leerTodo(m=>estadoSP(m));
+    spListo = true;
+    estadoSP('Conectado ✓');
+    return true;
+  }catch(e){
+    estadoSP('Sin conexión · ' + (e && e.message || ''));
+    return false;
+  }
+}
+
+async function cargarObra(cod){
+  if (hayCambiosSinGuardar() && !confirm('Hay cambios sin guardar. ¿Descartar y cambiar de obra?')) {
+    document.getElementById('selObra').value = obraActiva;
+    return;
+  }
+  obraActiva = cod;
+  document.getElementById('selObra').value = cod;
+
+  const partidasSP = (DATOS_SP && DATOS_SP.partidas || []).filter(p => (p.Proyecto||'').trim() === cod);
+  // Agregar duplicados de M_Partidas (mismo código, varias líneas): medición sumada
+  const porCod = {};
+  partidasSP.forEach(p=>{
+    if(!porCod[p.Codigo]) porCod[p.Codigo] = { cod:p.Codigo, cap:p.Capitulo||'Sin capítulo', desc:p.Descripcion, ud:p.Ud, med:0 };
+    porCod[p.Codigo].med += (p.Medicion||0);
+  });
+  PARTIDAS = Object.values(porCod);
+
+  MEDPK = {}; EDIT = {}; CAMBIOS = {};
+  let maxKm = 0;
+  if (spListo && SPTelice.leerMedicionPK){
+    try{
+      const med = await SPTelice.leerMedicionPK(cod);
+      med.forEach(m=>{
+        if(!MEDPK[m.Codigo]) MEDPK[m.Codigo] = {};
+        MEDPK[m.Codigo][m.Km] = (MEDPK[m.Codigo][m.Km]||0) + m.Medicion;
+        if(m.Km > maxKm) maxKm = m.Km;
+      });
+    }catch(e){ console.warn('[Mediciones] sin M_MedicionPK:', e && e.message); }
+  }
+  // copia editable
+  Object.keys(MEDPK).forEach(cod2=>{ EDIT[cod2] = {...MEDPK[cod2]}; });
+  numKms = Math.max(maxKm+1, 8);
+  document.getElementById('numKms').value = numKms;
+  actualizarBotonGuardar();
+  render();
+}
+
+function onNumKms(){
+  const v = parseInt(document.getElementById('numKms').value);
+  if(v >= 1 && v <= 200){ numKms = v; render(); }
+}
+function onFiltro(){ filtroTexto = document.getElementById('buscador').value; render(); }
+function hayCambiosSinGuardar(){ return Object.keys(CAMBIOS).length > 0; }
+function actualizarBotonGuardar(){
+  const n = Object.keys(CAMBIOS).length;
+  const btn = document.getElementById('btnGuardar');
+  btn.disabled = n === 0;
+  btn.textContent = n === 0 ? 'Guardar cambios' : `Guardar cambios (${n})`;
+}
+
+function onCelda(inp){
+  const cod = inp.dataset.cod, km = Number(inp.dataset.km);
+  const v = parseFloat(String(inp.value).replace(',','.'));
+  if(!EDIT[cod]) EDIT[cod] = {};
+  if(!isNaN(v) && v > 0){ EDIT[cod][km] = v; inp.classList.add('lleno'); }
+  else { delete EDIT[cod][km]; inp.classList.remove('lleno'); }
+  // ¿difiere del valor guardado?
+  const guardado = (MEDPK[cod]||{})[km];
+  const actual = EDIT[cod][km];
+  const clave = cod + '|' + km;
+  const difiere = (guardado||0) !== (actual||0);
+  if(difiere){ CAMBIOS[clave] = true; inp.classList.add('cambiado'); }
+  else { delete CAMBIOS[clave]; inp.classList.remove('cambiado'); }
+  actualizarBotonGuardar();
+  recalcularFila(cod);
+  recalcularPie();
+}
+
+function sumaFila(cod){
+  let t = 0; Object.values(EDIT[cod]||{}).forEach(v=>t+=v); return t;
+}
+
+function recalcularFila(cod){
+  const p = PARTIDAS.find(x=>x.cod===cod);
+  const celda = document.getElementById('tot-'+cod);
+  if(!celda || !p) return;
+  const t = sumaFila(cod);
+  celda.textContent = t ? t.toLocaleString('es-ES', {maximumFractionDigits:2}) : '—';
+  celda.classList.toggle('ok', t>0 && Math.abs(t - p.med) < 0.01);
+  celda.classList.toggle('mal', t>0 && Math.abs(t - p.med) >= 0.01);
+}
+
+function recalcularPie(){
+  for(let km=0; km<numKms; km++){
+    const celda = document.getElementById('totkm-'+km);
+    if(!celda) continue;
+    let t = 0;
+    PARTIDAS.forEach(p=>{ const v=(EDIT[p.cod]||{})[km]; if(v) t+=v; });
+    celda.textContent = t ? t.toLocaleString('es-ES', {maximumFractionDigits:1}) : '';
+  }
+}
+
+function render(){
+  const soloMed = document.getElementById('chkSoloMed').checked;
+  let th = '<tr><th class="col-cod">Código</th><th class="col-desc">Descripción</th><th class="col-med">Medición proy.</th>';
+  for(let km=0; km<numKms; km++) th += `<th>${km}+000<br>${km+1}+000</th>`;
+  th += '<th class="col-tot">Σ PKs</th></tr>';
+  document.getElementById('thead').innerHTML = th;
+
+  const visibles = PARTIDAS.filter(p=>{
+    if(soloMed && Object.keys(EDIT[p.cod]||{}).length===0) return false;
+    if(filtroTexto){
+      const t = filtroTexto.toLowerCase();
+      if(!(p.cod.toLowerCase().includes(t) || p.desc.toLowerCase().includes(t) || p.cap.toLowerCase().includes(t))) return false;
+    }
+    return true;
+  });
+
+  let body = '', capActual = null;
+  const nCols = numKms + 4;
+  if(visibles.length === 0){
+    body = `<tr><td colspan="${nCols}" style="padding:30px;text-align:center;color:var(--text2)">No hay partidas que coincidan.</td></tr>`;
+  }
+  visibles.forEach(p=>{
+    if(p.cap !== capActual){ capActual = p.cap; body += `<tr class="cap-row"><td colspan="${nCols}">${p.cap}</td></tr>`; }
+    body += `<tr><td class="cod">${p.cod}</td><td class="desc">${p.desc}</td>`;
+    body += `<td class="med">${p.med.toLocaleString('es-ES')} ${p.ud}</td>`;
+    for(let km=0; km<numKms; km++){
+      const v = (EDIT[p.cod]||{})[km];
+      const cambiado = CAMBIOS[p.cod+'|'+km] ? ' cambiado' : '';
+      body += `<td class="celda"><input type="number" min="0" step="any" value="${v!==undefined?v:''}" data-cod="${p.cod}" data-km="${km}" oninput="onCelda(this)" class="${v!==undefined?'lleno':''}${cambiado}"></td>`;
+    }
+    body += `<td class="tot" id="tot-${p.cod}"></td></tr>`;
+  });
+  document.getElementById('tbody').innerHTML = body;
+
+  let foot = '<tr><td class="lbl" colspan="3">Total por km →</td>';
+  for(let km=0; km<numKms; km++) foot += `<td id="totkm-${km}"></td>`;
+  foot += '<td></td></tr>';
+  document.getElementById('tfoot').innerHTML = foot;
+
+  visibles.forEach(p=>recalcularFila(p.cod));
+  recalcularPie();
+}
+
+async function guardar(){
+  const claves = Object.keys(CAMBIOS);
+  if(claves.length === 0) return;
+  // Solo se envían las celdas modificadas (upsert; 0 anula la medición)
+  const filas = claves.map(cl=>{
+    const [cod, km] = cl.split('|');
+    return { Proyecto: obraActiva, Codigo: cod, Km: Number(km), Medicion: (EDIT[cod]||{})[Number(km)] || 0 };
+  });
+  if (typeof SPTelice === 'undefined' || !SPTelice.guardarMedicionPK){
+    setEstado('Sin SharePoint · no guardado', 'var(--naranja)');
+    return;
+  }
+  setEstado(`Guardando ${filas.length} cambios…`);
+  document.getElementById('btnGuardar').disabled = true;
+  try{
+    const res = await SPTelice.guardarMedicionPK(filas);
+    if(res.ok){
+      // consolidar: lo editado pasa a ser lo guardado
+      claves.forEach(cl=>{
+        const [cod, km] = cl.split('|');
+        if(!MEDPK[cod]) MEDPK[cod] = {};
+        const v = (EDIT[cod]||{})[Number(km)];
+        if(v) MEDPK[cod][Number(km)] = v; else delete MEDPK[cod][Number(km)];
+      });
+      CAMBIOS = {};
+      actualizarBotonGuardar();
+      render();
+      setEstado(`Guardado · ${res.creadas} nuevas, ${res.actualizadas} actualizadas`, 'var(--verde)');
+      const t = document.getElementById('toast');
+      t.textContent = `Mediciones guardadas · ${filas.length} celdas`;
+      t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 2200);
+    }else{
+      console.warn('[Mediciones] errores:', res.errores);
+      setEstado(`Guardado con ${res.errores.length} errores (ver consola)`, 'var(--naranja)');
+    }
+  }catch(e){
+    console.error('[Mediciones] fallo:', e);
+    setEstado('Error al guardar: ' + e.message, '#c0392b');
+  }
+  actualizarBotonGuardar();
+}
+
+// avisar si se cierra con cambios pendientes
+window.addEventListener('beforeunload', (e)=>{
+  if(hayCambiosSinGuardar()){ e.preventDefault(); e.returnValue = ''; }
+});
+
+// init
+(async ()=>{
+  await conectarSP();
+  cargarObra('23-039');
+})();
+</script>
+</body>
+</html>
