@@ -554,6 +554,76 @@ async function leerProduccionTareas(proyecto) {
   }
 }
 
+// Carga masiva de despiece de tareas para MUCHAS partidas a la vez (pensado
+// para volcar de golpe un Excel con cientos de filas, como el propuesto por
+// IA y revisado por el usuario). A diferencia de guardarTareasPartida (que
+// lee la lista completa cada vez), aquí se lee M_TareasPartida UNA sola vez
+// y se reparte en memoria — imprescindible para no hacer 295 lecturas.
+// El borrado de tareas obsoletas solo afecta a las partidas presentes en
+// `filas`; una partida que no aparezca en esta carga no se toca.
+// filas: [{Proyecto, Codigo, Orden, Tarea, Peso}]
+async function guardarDespieceMasivo(filas, onProgreso) {
+  await ensureReady();
+  var fm = await getTareasFieldMap();
+  var cP = fm['Proyecto'] || 'field_1', cC = fm['Codigo'] || 'field_2';
+
+  var existentes = await spGet("/lists/GetByTitle('M_TareasPartida')/items?$select=Id,Title," + cP + "," + cC + "&$top=5000");
+  var porClave = {};
+  (existentes.value || []).forEach(function (it) { porClave[it.Title] = it.Id; });
+
+  // Agrupar filas de entrada por partida
+  var grupos = {};
+  filas.forEach(function (f) {
+    var key = f.Proyecto + '|' + f.Codigo;
+    if (!grupos[key]) grupos[key] = [];
+    grupos[key].push({ Orden: Number(f.Orden) || 0, Tarea: f.Tarea || '', Peso: Number(f.Peso) || 0 });
+  });
+
+  var clavesNuevasGlobal = {};
+  Object.keys(grupos).forEach(function (key) {
+    var partes = key.split('|'), proyecto = partes[0], codigo = partes[1];
+    grupos[key].forEach(function (t) { clavesNuevasGlobal[proyecto + '|' + codigo + '|' + t.Orden] = 1; });
+  });
+
+  // Tareas a borrar: existían, pertenecen a una partida incluida en esta
+  // carga, pero ya no están en la nueva versión de esa partida
+  var aBorrarIds = [];
+  (existentes.value || []).forEach(function (it) {
+    var key = String(it[cP] || '').trim() + '|' + String(it[cC] || '').trim();
+    if (!grupos[key]) return;
+    if (!clavesNuevasGlobal[it.Title]) aBorrarIds.push(it.Id);
+  });
+
+  var errores = [], creadas = 0, actualizadas = 0, borradas = 0;
+  var claves = Object.keys(grupos), total = claves.length, i = 0;
+  for (var k = 0; k < claves.length; k++) {
+    var key = claves[k], partes2 = key.split('|'), proyecto2 = partes2[0], codigo2 = partes2[1];
+    var tareas = grupos[key].slice().sort(function (a, b) { return a.Orden - b.Orden; });
+    i++;
+    if (onProgreso) onProgreso(i, total, proyecto2, codigo2);
+    for (var j = 0; j < tareas.length; j++) {
+      var t = tareas[j];
+      var clave = proyecto2 + '|' + codigo2 + '|' + t.Orden;
+      var body = {};
+      body[fm['Proyecto'] || 'field_1'] = proyecto2;
+      body[fm['Codigo'] || 'field_2'] = codigo2;
+      body[fm['Orden'] || 'field_3'] = t.Orden;
+      body[fm['Tarea'] || 'field_4'] = t.Tarea;
+      body[fm['Peso'] || 'field_5'] = t.Peso;
+      try {
+        if (porClave[clave]) { await spPatch('M_TareasPartida', porClave[clave], body); actualizadas++; }
+        else { body.Title = clave; await spPost('M_TareasPartida', body); creadas++; }
+      } catch (e) { errores.push(clave + ': ' + e.message); }
+    }
+  }
+  for (var b = 0; b < aBorrarIds.length; b++) {
+    try { await spDelete('M_TareasPartida', aBorrarIds[b]); borradas++; }
+    catch (e) { errores.push('borrar id ' + aBorrarIds[b] + ': ' + e.message); }
+  }
+
+  return { partidas: total, creadas: creadas, actualizadas: actualizadas, borradas: borradas, errores: errores, ok: errores.length === 0 };
+}
+
 // ═══════════════════════════════════════════════════════
 // GUARDADO DE PLANIFICACIÓN (comparación planificado vs ejecutado)
 // ═══════════════════════════════════════════════════════
@@ -974,7 +1044,8 @@ global.SPTelice = {
   guardarMedicionPK: guardarMedicionPK,
   leerTareasPartida: leerTareasPartida,
   guardarTareasPartida: guardarTareasPartida,
-  leerProduccionTareas: leerProduccionTareas
+  leerProduccionTareas: leerProduccionTareas,
+  guardarDespieceMasivo: guardarDespieceMasivo
 };
 
 })(window);
