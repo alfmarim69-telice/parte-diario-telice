@@ -532,6 +532,28 @@ async function guardarTareasPartida(proyecto, codigo, tareas) {
   return { creadas: creadas, actualizadas: actualizadas, borradas: borradas, errores: errores, ok: errores.length === 0 };
 }
 
+// Acumulado ejecutado por tarea en una obra (de ParteProduccionTareas):
+// devuelve { cod: { tarea: cantidadAcumulada } }. Para pintar en el parte
+// el ejecutado/pendiente de cada tarea, al estilo ficha de elemento.
+async function leerProduccionTareas(proyecto) {
+  await ensureReady();
+  try {
+    var data = await spGet("/lists/GetByTitle('ParteProduccionTareas')/items?$top=5000&$select=field_2,field_3,field_4,field_5");
+    var out = {};
+    (data.value || []).forEach(function (it) {
+      if (String(it.field_2 || '').trim() !== proyecto) return;
+      var cod = it.field_3 || '', tarea = it.field_4 || '';
+      if (!cod || !tarea) return;
+      if (!out[cod]) out[cod] = {};
+      out[cod][tarea] = (out[cod][tarea] || 0) + (Number(it.field_5) || 0);
+    });
+    return out;
+  } catch (e) {
+    console.warn('[SP] ParteProduccionTareas no disponible:', e && e.message);
+    return {};
+  }
+}
+
 // ═══════════════════════════════════════════════════════
 // GUARDADO DE PLANIFICACIÓN (comparación planificado vs ejecutado)
 // ═══════════════════════════════════════════════════════
@@ -756,6 +778,10 @@ var PARTE_MAPS = {
     Observaciones:'field_5', Importe:'Importe', Ud:'Ud',
     PKInicio:'PKInicio', PKFinal:'PKFinal', Lugar:'Lugar', TaskBC:'TaskBC'
   },
+  ParteProduccionTareas: {
+    ParteId:'field_1', Proyecto:'field_2', CodProduccion:'field_3', Tarea:'field_4',
+    Cantidad:'field_5', PKInicio:'field_6', PKFinal:'field_7'
+  },
   ParteAlquileres: {
     ParteId:'field_1', Proyecto:'field_2', CodRef:'field_3', CodControl:'field_4',
     Horas:'field_5', Importe:'field_6', Descripcion:'Descripcion', CosteHora:'CosteHora'
@@ -871,8 +897,24 @@ async function guardarParteEnSP(parte) {
           Ud: pr.ud || '', PKInicio: pr.pk_ini || '',
           PKFinal: pr.pk_fin || '', Lugar: pr.lugar || '',
           TaskBC: pr.task_grupo || '',
-          Observaciones: ''
+          Observaciones: pr.tareas && pr.tareas.length ? 'Equivalente por tareas' : ''
         }));
+      // 6b) Detalle por tareas (si la partida tiene despiece):
+      // la Cantidad de ParteProduccion es el EQUIVALENTE (Σ cant × peso);
+      // aquí se guarda el desglose real que reportó el jefe de equipo.
+      if (pr.tareas && pr.tareas.length) {
+        for (var j = 0; j < pr.tareas.length; j++) {
+          var ta = pr.tareas[j];
+          if (!ta.cant || ta.cant <= 0) continue;
+          await spPost('ParteProduccionTareas', buildParteBody('ParteProduccionTareas',
+            clave + '|PR' + i + '|T' + j, {
+              ParteId: parteId, Proyecto: proy,
+              CodProduccion: pr.partida_cod || '',
+              Tarea: ta.tarea || '', Cantidad: ta.cant || 0,
+              PKInicio: pr.pk_ini || '', PKFinal: pr.pk_fin || ''
+            }));
+        }
+      }
     } catch(e) { errores.push('Produccion[' + i + ']: ' + e.message); }
   }
 
@@ -931,7 +973,9 @@ global.SPTelice = {
   leerMedicionPK: leerMedicionPK,
   guardarMedicionPK: guardarMedicionPK,
   leerTareasPartida: leerTareasPartida,
-  guardarTareasPartida: guardarTareasPartida
+  guardarTareasPartida: guardarTareasPartida,
+  leerProduccionTareas: leerProduccionTareas
 };
 
 })(window);
+
