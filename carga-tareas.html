@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Carga masiva de tareas por partida · Telice</title>
+<style>
+  :root{ --azul:#1F3864; --azul2:#134080; --verde:#548235; --border:#dde1e7; --border2:#c8cdd6;
+    --text:#1a2030; --text2:#5a6478; --bg:#f0f2f5; --card:#fff; --font:'Segoe UI',system-ui,sans-serif; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px}
+  header{background:var(--azul2);color:#fff;padding:14px 22px}
+  header h1{font-size:18px}
+  header .sub{font-size:12px;opacity:.85;margin-top:2px}
+  .wrap{max-width:1100px;margin:20px auto;padding:0 16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;margin-bottom:16px}
+  .card h2{font-size:15px;margin-bottom:8px;color:var(--azul2)}
+  .card p{font-size:13px;color:var(--text2);margin-bottom:10px;line-height:1.5}
+  textarea{width:100%;min-height:160px;border:1px solid var(--border2);border-radius:6px;padding:10px;
+    font-family:Consolas,monospace;font-size:11px;resize:vertical}
+  button{font-family:var(--font);font-size:13px;padding:8px 14px;border-radius:6px;border:1px solid var(--border2);cursor:pointer}
+  .btn-primario{background:var(--verde);color:#fff;border:none;font-weight:600}
+  .btn-primario:disabled{background:#aaa;cursor:not-allowed}
+  .fila-controles{display:flex;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap}
+  table{border-collapse:collapse;width:100%;font-size:12px;margin-top:12px}
+  th,td{border:1px solid var(--border);padding:5px 8px;text-align:left}
+  th{background:#f4f7fb;font-weight:600;position:sticky;top:0}
+  td.num{text-align:right;font-family:Consolas,monospace}
+  tr.mal{background:#fdecea}
+  .estado{font-size:13px;font-weight:600}
+  .ok{color:var(--verde)} .err{color:#c0392b} .aviso{color:#b06000}
+  .resumen-chip{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;margin-right:8px}
+  .chip-ok{background:#e6f4ed;color:var(--verde)}
+  .chip-mal{background:#fdecea;color:#c0392b}
+  .tabla-scroll{max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:6px}
+  .progreso{font-size:12px;color:var(--text2);margin-top:6px}
+  label.chk{font-size:13px;display:flex;align-items:center;gap:6px}
+  code{background:#eef2f7;padding:1px 5px;border-radius:3px;font-size:12px}
+</style>
+<script src="msal-browser.min.js"></script>
+<script src="sp-integracion.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>Carga masiva de tareas por partida</h1>
+  <div class="sub">Alimenta M_TareasPartida de golpe · <span id="estadoSP">Conectando…</span></div>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <h2>1 · Pega el despiece completo</h2>
+    <p>Copia el rango de datos de la hoja <b>"Despiece propuesto"</b> del Excel, <b>sin cabecera</b>
+    (desde la primera fila de datos hasta la última). Las 8 columnas esperadas son:
+    <code>Proyecto · Codigo · Descripcion · Ud · Familia · Orden · Tarea · Peso %</code>.
+    Puedes pegar varias obras a la vez.</p>
+    <textarea id="datos" placeholder="23-039&#9;CAN008&#9;Canaleta de hormigón 220x195 mm&#9;m&#9;CANALETA&#9;1&#9;Excavación&#9;30"></textarea>
+    <div class="fila-controles">
+      <button onclick="previsualizar()">Previsualizar</button>
+      <span class="estado" id="msgPrev"></span>
+    </div>
+  </div>
+
+  <div class="card" id="cardResumen" style="display:none">
+    <h2>2 · Revisión antes de cargar</h2>
+    <div id="chips"></div>
+    <div class="tabla-scroll"><table id="tablaPreview"></table></div>
+    <div class="fila-controles" style="margin-top:14px">
+      <label class="chk"><input type="checkbox" id="chkForzar" onchange="actualizarBoton()">
+        Cargar de todas formas aunque haya partidas que no sumen 100%</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3 · Cargar a SharePoint</h2>
+    <p>Hace <i>upsert</i> partida a partida: actualiza lo que coincide, crea lo nuevo, y borra tareas
+    obsoletas <b>solo de las partidas incluidas en esta carga</b> — las que no pegues no se tocan.
+    Con cientos de partidas puede tardar varios minutos; no cierres la pestaña.</p>
+    <div class="fila-controles">
+      <button class="btn-primario" id="btnCargar" onclick="cargar()" disabled>Cargar a M_TareasPartida</button>
+      <span class="estado" id="msgCarga"></span>
+    </div>
+    <div class="progreso" id="progreso"></div>
+  </div>
+</div>
+
+<script>
+let FILAS = [];
+let GRUPOS = [];  // resumen por partida para la tabla de revisión
+
+function estadoSP(m){ document.getElementById('estadoSP').textContent = m; }
+
+(async ()=>{
+  if (typeof SPTelice === 'undefined'){ estadoSP('sp-integracion.js no cargado'); return; }
+  try{
+    await SPTelice.ensureReady();
+    if (!SPTelice.currentAccount()) await SPTelice.login();
+    estadoSP('Conectado ✓');
+  }catch(e){ estadoSP('Sin conexión: ' + (e && e.message || '')); }
+})();
+
+function previsualizar(){
+  const raw = document.getElementById('datos').value.trim();
+  const msg = document.getElementById('msgPrev');
+  FILAS = []; GRUPOS = [];
+  document.getElementById('cardResumen').style.display = 'none';
+  document.getElementById('btnCargar').disabled = true;
+  if(!raw){ msg.textContent='Pega los datos primero'; msg.className='estado aviso'; return; }
+
+  const errores = [];
+  raw.split(/\r?\n/).forEach((linea, i)=>{
+    if(!linea.trim()) return;
+    const c = linea.split('\t').map(s=>s.trim());
+    if(c.length < 8){ errores.push(`Línea ${i+1}: se esperan 8 columnas, hay ${c.length}`); return; }
+    const [Proyecto, Codigo, Descripcion, Ud, Familia, ordenTxt, Tarea, pesoTxt] = c;
+    const Orden = parseInt(ordenTxt);
+    const Peso = parseFloat(String(pesoTxt).replace(',','.'));
+    if(!Proyecto || !Codigo){ errores.push(`Línea ${i+1}: Proyecto o Código vacío`); return; }
+    if(!Number.isInteger(Orden) || Orden < 1){ errores.push(`Línea ${i+1}: Orden no válido ("${ordenTxt}")`); return; }
+    if(!Tarea){ errores.push(`Línea ${i+1}: nombre de tarea vacío`); return; }
+    if(isNaN(Peso) || Peso <= 0 || Peso > 100){ errores.push(`Línea ${i+1}: peso no válido ("${pesoTxt}")`); return; }
+    FILAS.push({ Proyecto, Codigo, Descripcion, Ud, Familia, Orden, Tarea, Peso });
+  });
+
+  if(errores.length){
+    msg.textContent = errores.length + ' errores de formato. Corrige y vuelve a previsualizar.';
+    msg.className = 'estado err';
+    document.getElementById('cardResumen').style.display = 'block';
+    document.getElementById('chips').innerHTML = `<span class="resumen-chip chip-mal">${errores.length} líneas con error</span>`;
+    document.getElementById('tablaPreview').innerHTML =
+      '<tr><td style="color:#c0392b">' + errores.slice(0,25).join('<br>') + '</td></tr>';
+    return;
+  }
+
+  // Agrupar por partida para la tabla de revisión
+  const porPartida = {};
+  FILAS.forEach(f=>{
+    const key = f.Proyecto + '|' + f.Codigo;
+    if(!porPartida[key]) porPartida[key] = { Proyecto:f.Proyecto, Codigo:f.Codigo, Descripcion:f.Descripcion, Ud:f.Ud, tareas:[], suma:0 };
+    porPartida[key].tareas.push(f.Tarea + ' (' + f.Peso + '%)');
+    porPartida[key].suma += f.Peso;
+  });
+  GRUPOS = Object.values(porPartida);
+  const conDescuadre = GRUPOS.filter(g => Math.abs(g.suma-100) > 0.5);
+
+  msg.textContent = `${FILAS.length} filas válidas · ${GRUPOS.length} partidas`;
+  msg.className = 'estado ok';
+  document.getElementById('cardResumen').style.display = 'block';
+  document.getElementById('chips').innerHTML =
+    `<span class="resumen-chip chip-ok">${GRUPOS.length} partidas</span>` +
+    `<span class="resumen-chip chip-ok">${FILAS.length} tareas</span>` +
+    (conDescuadre.length
+      ? `<span class="resumen-chip chip-mal">${conDescuadre.length} partidas no suman 100%</span>`
+      : `<span class="resumen-chip chip-ok">Todas suman 100%</span>`);
+
+  let html = '<tr><th>Proyecto</th><th>Código</th><th>Descripción</th><th>Tareas</th><th>Suma</th></tr>';
+  GRUPOS.forEach(g=>{
+    const mal = Math.abs(g.suma-100) > 0.5;
+    html += `<tr class="${mal?'mal':''}"><td>${g.Proyecto}</td><td>${g.Codigo}</td>` +
+      `<td>${(g.Descripcion||'').substring(0,50)}</td><td>${g.tareas.join(' · ')}</td>` +
+      `<td class="num" style="${mal?'color:#c0392b;font-weight:700':''}">${g.suma.toLocaleString('es-ES')}%</td></tr>`;
+  });
+  document.getElementById('tablaPreview').innerHTML = html;
+  actualizarBoton();
+}
+
+function actualizarBoton(){
+  if(FILAS.length===0){ document.getElementById('btnCargar').disabled = true; return; }
+  const forzar = document.getElementById('chkForzar').checked;
+  const conDescuadre = GRUPOS.some(g => Math.abs(g.suma-100) > 0.5);
+  document.getElementById('btnCargar').disabled = conDescuadre && !forzar;
+}
+
+async function cargar(){
+  const msg = document.getElementById('msgCarga');
+  const prog = document.getElementById('progreso');
+  if(FILAS.length===0){ msg.textContent='Previsualiza primero'; msg.className='estado aviso'; return; }
+  document.getElementById('btnCargar').disabled = true;
+  msg.textContent = 'Cargando…'; msg.className='estado';
+  try{
+    const res = await SPTelice.guardarDespieceMasivo(FILAS, (i,total,proy,cod)=>{
+      prog.textContent = `Partida ${i} de ${total} — ${proy} · ${cod}`;
+    });
+    prog.textContent = '';
+    if(res.ok){
+      msg.textContent = `Hecho: ${res.partidas} partidas · ${res.creadas} tareas creadas, ${res.actualizadas} actualizadas, ${res.borradas} borradas.`;
+      msg.className = 'estado ok';
+    }else{
+      console.warn('Errores de carga:', res.errores);
+      msg.textContent = `Terminado con ${res.errores.length} errores de ${res.partidas} partidas (ver consola F12).`;
+      msg.className = 'estado err';
+    }
+  }catch(e){
+    prog.textContent = '';
+    msg.textContent = 'Error: ' + e.message; msg.className='estado err';
+  }
+  document.getElementById('btnCargar').disabled = false;
+}
+</script>
+</body>
+</html>
