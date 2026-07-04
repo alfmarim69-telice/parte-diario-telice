@@ -236,14 +236,20 @@ function pkAMetros(s){
 
 // Reparte una cantidad ejecutada entre los km que cubre su tramo PKInicio-PKFinal
 // (proporcional a la longitud en cada km). Sin PKs -> cubo "sin ubicar".
+// REALPK: cod -> {km: cantidad} (acumulado) · REALPK_DIA: cod -> {km: {fecha: cantidad}}
+let REALPK_DIA = {};
 function construirRealPorKm(){
-  REALPK = {}; REAL_SIN_PK = {};
-  const add = (cod, km, v)=>{
+  REALPK = {}; REAL_SIN_PK = {}; REALPK_DIA = {};
+  const add = (cod, km, v, fecha)=>{
     if(!REALPK[cod]) REALPK[cod] = {};
     REALPK[cod][km] = (REALPK[cod][km]||0) + v;
+    if(!REALPK_DIA[cod]) REALPK_DIA[cod] = {};
+    if(!REALPK_DIA[cod][km]) REALPK_DIA[cod][km] = {};
+    REALPK_DIA[cod][km][fecha] = (REALPK_DIA[cod][km][fecha]||0) + v;
   };
   REAL_OBRA.forEach(f=>{
     if(!f.CodProduccion || !f.Cantidad) return;
+    if(cuadrillaActiva && f.Cuadrilla !== cuadrillaActiva) return;
     const a = pkAMetros(f.PKInicio), b = pkAMetros(f.PKFinal);
     if(a===null && b===null){
       REAL_SIN_PK[f.CodProduccion] = (REAL_SIN_PK[f.CodProduccion]||0) + f.Cantidad;
@@ -251,11 +257,11 @@ function construirRealPorKm(){
     }
     let ini = (a!==null?a:b), fin = (b!==null?b:a);
     if(fin < ini){ const t=ini; ini=fin; fin=t; }
-    if(fin === ini){ add(f.CodProduccion, Math.floor(ini/1000), f.Cantidad); return; }
+    if(fin === ini){ add(f.CodProduccion, Math.floor(ini/1000), f.Cantidad, f.Fecha); return; }
     const total = fin - ini;
     for(let km=Math.floor(ini/1000); km<=Math.floor((fin-0.001)/1000); km++){
       const s = Math.max(ini, km*1000), e = Math.min(fin, (km+1)*1000);
-      if(e > s) add(f.CodProduccion, km, f.Cantidad*(e-s)/total);
+      if(e > s) add(f.CodProduccion, km, f.Cantidad*(e-s)/total, f.Fecha);
     }
   });
 }
@@ -299,22 +305,17 @@ function ejecDiaTramo(cod, fechaISO){
     const tot = (REAL[cod]||{})[fechaISO];
     return tot > 0 ? tot : undefined;
   }
-  // Con tramo activo: suma solo líneas con PK ubicado en los kms seleccionados
+  // Con tramo: suma la parte proporcional ubicada en los kms seleccionados.
+  // Así, si una línea 1+200–2+800 tiene 25 uds, km1 muestra su parte, km2 la
+  // suya, y km1+km2 juntos suman la línea completa (sin duplicar ni perder).
+  const porKm = REALPK_DIA[cod];
+  if(!porKm) return undefined;
   let total = 0, hayAlgo = false;
-  REAL_OBRA.forEach(f=>{
-    if(f.CodProduccion !== cod || f.Fecha !== fechaISO) return;
-    if(cuadrillaActiva && f.Cuadrilla !== cuadrillaActiva) return;
-    const a = pkAMetros(f.PKInicio), b = pkAMetros(f.PKFinal);
-    if(a === null && b === null) return; // sin PK → no cuenta en tramo concreto
-    let ini = (a!==null?a:b), fin = (b!==null?b:a);
-    if(fin < ini){ const t=ini; ini=fin; fin=t; }
-    let coincide = false;
-    pksSeleccionados.forEach(km=>{
-      if(ini <= (km+1)*1000 && fin >= km*1000) coincide = true;
-    });
-    if(coincide){ total += f.Cantidad||0; hayAlgo = true; }
+  pksSeleccionados.forEach(km=>{
+    const v = (porKm[km]||{})[fechaISO];
+    if(v){ total += v; hayAlgo = true; }
   });
-  return hayAlgo ? total : undefined;
+  return hayAlgo ? +total.toFixed(2) : undefined;
 }
 
 // Medición de una partida en el tramo seleccionado (o total M_MedicionPK si no hay selección)
@@ -657,7 +658,7 @@ function recalcular(){
     const cell=document.getElementById('tot-'+p.cod);
     if(cell){ cell.textContent=t.toLocaleString('es-ES'); cell.classList.toggle('exceso', t>p.med); }
 
-    let r=0; Object.values(REAL[p.cod]||{}).forEach(v=>r+=v);
+    let r = +ejecTramo(p.cod).toFixed(2);
     const cellR=document.getElementById('real-'+p.cod);
     if(cellR) cellR.textContent = r ? r.toLocaleString('es-ES') : '—';
 
@@ -676,7 +677,8 @@ function recalcular(){
     let t=0, r=0;
     PARTIDAS.forEach(p=>{
       if(PLAN[p.cod][iso(d)]) t+=PLAN[p.cod][iso(d)];
-      if((REAL[p.cod]||{})[iso(d)]) r+=REAL[p.cod][iso(d)];
+      const ed = ejecDiaTramo(p.cod, iso(d));
+      if(ed) r += ed;
     });
     const cell=document.getElementById('totdia-'+iso(d));
     if(cell) cell.textContent = t? t.toLocaleString('es-ES') : '0';
@@ -759,6 +761,14 @@ async function guardar(){
   try{
     const res = await SPTelice.guardarPlanificacion(obraActiva, cuadrillaActiva, filas);
     if (res.ok){
+      // Refrescar la caché en memoria: las filas guardadas reemplazan a las
+      // antiguas de esta obra+cuadrilla (si no, al cambiar de cuadrilla y
+      // volver se verían datos desactualizados hasta recargar la página)
+      if (DATOS_SP && DATOS_SP.planificacion){
+        DATOS_SP.planificacion = DATOS_SP.planificacion.filter(r =>
+          (r.Proyecto||'').trim() !== obraActiva || (r.Cuadrilla||'').trim() !== cuadrillaActiva);
+        filas.forEach(f => DATOS_SP.planificacion.push({...f}));
+      }
       document.getElementById('estado').textContent =
         `Guardado · ${res.creadas} nuevas, ${res.actualizadas} actualizadas, ${res.borradas} borradas`;
       document.getElementById('estado').style.color='var(--verde)';
