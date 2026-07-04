@@ -935,4 +935,3 @@ global.SPTelice = {
 };
 
 })(window);
-
