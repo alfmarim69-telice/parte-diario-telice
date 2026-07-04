@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tareas por partida · Parte Diario Telice</title>
+<style>
+  :root{ --azul:#1F3864; --azul2:#2d4a7c; --verde:#548235; --naranja:#C55A11;
+    --bg:#f4f5f7; --card:#ffffff; --border:#e3e6ea; --border2:#cfd4da;
+    --text:#1a2433; --text2:#5b6573;
+    --font:'Segoe UI',system-ui,-apple-system,sans-serif; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13px}
+  header{background:var(--azul);color:#fff;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  header h1{font-size:17px;font-weight:600}
+  header .sub{font-size:11px;opacity:.85;margin-top:2px}
+  header select{font-family:var(--font);font-size:13px;padding:8px 12px;border-radius:6px;border:none;font-weight:600;color:var(--azul)}
+  .layout{display:flex;gap:0;height:calc(100vh - 62px)}
+  /* panel izquierdo: partidas */
+  .izq{width:420px;min-width:320px;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column}
+  .izq .busca{padding:12px;border-bottom:1px solid var(--border)}
+  .izq .busca input{width:100%;border:1px solid var(--border2);border-radius:6px;padding:8px 10px;font-family:var(--font);font-size:13px}
+  .izq .lista{flex:1;overflow-y:auto}
+  .pitem{padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;gap:10px;align-items:center}
+  .pitem:hover{background:#f4f7fb}
+  .pitem.sel{background:#e8f0fb;border-left:3px solid var(--azul)}
+  .pitem .cod{font-family:Consolas,monospace;font-size:12px;font-weight:700;white-space:nowrap}
+  .pitem .desc{font-size:11px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pitem .badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:9px;white-space:nowrap}
+  .pitem .badge.con{background:#e6f4ed;color:var(--verde)}
+  .pitem .badge.sin{background:#f0f0f0;color:var(--text2)}
+  .cap-hdr{padding:7px 14px;background:#e9edf3;font-weight:700;font-size:10px;letter-spacing:.4px;text-transform:uppercase;color:var(--azul);position:sticky;top:0}
+  /* panel derecho: tareas */
+  .der{flex:1;padding:22px;overflow-y:auto}
+  .vacio{color:var(--text2);text-align:center;padding-top:80px;font-size:14px}
+  .ficha{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;max-width:760px}
+  .ficha h2{font-size:15px;margin-bottom:2px}
+  .ficha .fdesc{font-size:12px;color:var(--text2);margin-bottom:16px}
+  table.tareas{border-collapse:collapse;width:100%}
+  table.tareas th{text-align:left;font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;padding:6px 8px;border-bottom:2px solid var(--border2)}
+  table.tareas td{padding:5px 8px;border-bottom:1px solid var(--border)}
+  table.tareas input[type=text]{width:100%;border:1px solid var(--border2);border-radius:5px;padding:7px 9px;font-family:var(--font);font-size:13px}
+  table.tareas input[type=number]{width:80px;border:1px solid var(--border2);border-radius:5px;padding:7px 9px;text-align:right;font-family:Consolas,monospace;font-size:13px}
+  .btn{border:none;border-radius:6px;padding:8px 14px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer}
+  .btn.prim{background:var(--verde);color:#fff}
+  .btn.prim:disabled{background:#aab2ac;cursor:not-allowed}
+  .btn.sec{background:#eef1f5;color:var(--text)}
+  .btn.mini{padding:5px 9px;font-size:12px}
+  .btn.del{background:#fdecea;color:#c0392b}
+  .fila-acciones{display:flex;gap:10px;margin-top:16px;align-items:center;flex-wrap:wrap}
+  .suma{font-size:13px;font-weight:700;padding:7px 14px;border-radius:6px}
+  .suma.ok{background:#e6f4ed;color:var(--verde)}
+  .suma.mal{background:#fdecea;color:#c0392b}
+  .nota{font-size:11px;color:var(--text2);margin-top:14px;line-height:1.5}
+  .estado{font-size:12px;font-weight:600;color:var(--text2)}
+  .plantillas{margin-top:10px;font-size:12px}
+  .plantillas select{font-family:var(--font);font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:5px}
+</style>
+<script src="msal-browser.min.js"></script>
+<script src="sp-integracion.js"></script>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Tareas por partida</h1>
+    <div class="sub">Despiece de partidas en tareas con peso · <span id="estadoSP">Conectando…</span></div>
+  </div>
+  <select id="selObra" onchange="cargarObra(this.value)">
+    <option value="23-039">23-039 · Renovación Norte</option>
+    <option value="26-008">26-008 · LAV Lorca-Almería · Catenaria</option>
+  </select>
+</header>
+
+<div class="layout">
+  <div class="izq">
+    <div class="busca"><input type="text" id="buscador" placeholder="Buscar partida..." oninput="filtro=this.value;renderLista()"></div>
+    <div class="lista" id="lista"></div>
+  </div>
+  <div class="der" id="der">
+    <div class="vacio">Selecciona una partida para definir sus tareas.</div>
+  </div>
+</div>
+
+<script>
+let obraActiva = '23-039';
+let PARTIDAS = [];       // {cod, cap, desc, ud}
+let TAREAS = {};         // cod -> [{Orden, Tarea, Peso}]  (estado guardado en SP)
+let EDIT = null;         // tareas en edición de la partida seleccionada
+let sel = null;          // cod seleccionado
+let filtro = '';
+let DATOS_SP = null;
+let spListo = false;
+
+function estadoSP(m){ document.getElementById('estadoSP').textContent = m; }
+
+async function conectarSP(){
+  if (typeof SPTelice === 'undefined'){ estadoSP('Sin conexión'); return false; }
+  try{
+    await SPTelice.ensureReady();
+    if (!SPTelice.currentAccount()) await SPTelice.login();
+    estadoSP('Leyendo maestros…');
+    DATOS_SP = await SPTelice.leerTodo(m=>estadoSP(m));
+    spListo = true;
+    estadoSP('Conectado ✓');
+    return true;
+  }catch(e){ estadoSP('Sin conexión · ' + (e && e.message||'')); return false; }
+}
+
+async function cargarObra(cod){
+  obraActiva = cod;
+  document.getElementById('selObra').value = cod;
+  const porCod = {};
+  (DATOS_SP && DATOS_SP.partidas || []).filter(p=>(p.Proyecto||'').trim()===cod).forEach(p=>{
+    if(!porCod[p.Codigo]) porCod[p.Codigo] = { cod:p.Codigo, cap:p.Capitulo||'Sin capítulo', desc:p.Descripcion, ud:p.Ud };
+  });
+  PARTIDAS = Object.values(porCod);
+
+  TAREAS = {};
+  if (spListo && SPTelice.leerTareasPartida){
+    try{
+      (await SPTelice.leerTareasPartida(cod)).forEach(t=>{
+        if(!TAREAS[t.Codigo]) TAREAS[t.Codigo] = [];
+        TAREAS[t.Codigo].push({ Orden:t.Orden, Tarea:t.Tarea, Peso:t.Peso });
+      });
+    }catch(e){ console.warn('[Tareas] sin M_TareasPartida:', e && e.message); }
+  }
+  sel = null; EDIT = null;
+  renderLista();
+  document.getElementById('der').innerHTML = '<div class="vacio">Selecciona una partida para definir sus tareas.</div>';
+}
+
+function renderLista(){
+  const q = filtro.toLowerCase();
+  const visibles = PARTIDAS.filter(p=>!q || p.cod.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q) || p.cap.toLowerCase().includes(q));
+  let html = '', capActual = null;
+  visibles.forEach(p=>{
+    if(p.cap !== capActual){ capActual = p.cap; html += `<div class="cap-hdr">${p.cap}</div>`; }
+    const n = (TAREAS[p.cod]||[]).length;
+    html += `<div class="pitem ${sel===p.cod?'sel':''}" onclick="seleccionar('${p.cod.replace(/'/g,"\\'")}')">
+      <span class="cod">${p.cod}</span>
+      <span class="desc" title="${p.desc}">${p.desc}</span>
+      <span class="badge ${n?'con':'sin'}">${n ? n+' tareas' : 'sin tareas'}</span>
+    </div>`;
+  });
+  document.getElementById('lista').innerHTML = html || '<div style="padding:20px;color:var(--text2)">Sin partidas.</div>';
+}
+
+function seleccionar(cod){
+  if(EDIT && hayCambios() && !confirm('Hay cambios sin guardar en la partida actual. ¿Descartar?')) return;
+  sel = cod;
+  EDIT = (TAREAS[cod]||[]).map(t=>({...t}));
+  renderLista();
+  renderFicha();
+}
+
+function hayCambios(){
+  const orig = JSON.stringify(TAREAS[sel]||[]);
+  const edit = JSON.stringify((EDIT||[]).filter(t=>t.Tarea.trim()!==''));
+  return orig !== edit;
+}
+
+function sumaPesos(){ return (EDIT||[]).filter(t=>t.Tarea.trim()!=='').reduce((a,t)=>a+(Number(t.Peso)||0),0); }
+
+// Partidas que ya tienen tareas (para copiar plantilla)
+function partidasConTareas(){ return Object.keys(TAREAS).filter(c=>c!==sel && (TAREAS[c]||[]).length>0); }
+
+function renderFicha(){
+  const p = PARTIDAS.find(x=>x.cod===sel);
+  if(!p){ document.getElementById('der').innerHTML=''; return; }
+  const suma = sumaPesos();
+  const filasValidas = (EDIT||[]).filter(t=>t.Tarea.trim()!=='').length;
+  const puedeGuardar = filasValidas > 0 ? Math.abs(suma-100) < 0.01 : true; // sin tareas = quitar despiece (permitido)
+  const conTareas = partidasConTareas();
+
+  const filas = (EDIT||[]).map((t,i)=>`
+    <tr>
+      <td style="width:36px;text-align:center;color:var(--text2);font-family:Consolas,monospace">${i+1}</td>
+      <td><input type="text" value="${t.Tarea.replace(/"/g,'&quot;')}" placeholder="Nombre de la tarea (ej. Excavación)" oninput="EDIT[${i}].Tarea=this.value;refrescarSuma()"></td>
+      <td style="width:110px"><input type="number" min="0" max="100" step="any" value="${t.Peso||''}" oninput="EDIT[${i}].Peso=parseFloat(this.value)||0;refrescarSuma()"> %</td>
+      <td style="width:44px"><button class="btn del mini" onclick="EDIT.splice(${i},1);renderFicha()" title="Quitar tarea">🗑</button></td>
+    </tr>`).join('');
+
+  document.getElementById('der').innerHTML = `
+    <div class="ficha">
+      <h2>${p.cod} <span style="font-weight:400;color:var(--text2)">· ${p.ud}</span></h2>
+      <div class="fdesc">${p.desc}</div>
+      <table class="tareas">
+        <thead><tr><th>#</th><th>Tarea</th><th>Peso</th><th></th></tr></thead>
+        <tbody>${filas || '<tr><td colspan="4" style="color:var(--text2);padding:14px">Sin tareas. Añade la primera o copia de otra partida.</td></tr>'}</tbody>
+      </table>
+      <div class="fila-acciones">
+        <button class="btn sec" onclick="EDIT.push({Orden:EDIT.length+1,Tarea:'',Peso:0});renderFicha()">＋ Añadir tarea</button>
+        <span class="suma ${puedeGuardar?'ok':'mal'}" id="suma">Σ ${suma.toLocaleString('es-ES')} %</span>
+        <span style="flex:1"></span>
+        <span class="estado" id="estado"></span>
+        <button class="btn prim" id="btnGuardar" onclick="guardar()" ${puedeGuardar && hayCambios() ? '' : 'disabled'}>Guardar</button>
+      </div>
+      ${conTareas.length ? `<div class="plantillas">Copiar despiece de:
+        <select id="selCopia"><option value="">— elegir partida —</option>${conTareas.map(c=>`<option value="${c}">${c}</option>`).join('')}</select>
+        <button class="btn sec mini" onclick="copiarDe()">Copiar</button></div>` : ''}
+      <div class="nota">Los pesos deben sumar <b>100 %</b>. La producción equivalente de la partida se calculará como
+      Σ (cantidad reportada de cada tarea × su peso). Si guardas sin tareas, la partida vuelve al modo clásico
+      (una sola cantidad en el parte). Las tareas comparten la unidad de la partida (${p.ud}).</div>
+    </div>`;
+}
+
+function refrescarSuma(){
+  const suma = sumaPesos();
+  const filasValidas = (EDIT||[]).filter(t=>t.Tarea.trim()!=='').length;
+  const ok = filasValidas > 0 ? Math.abs(suma-100) < 0.01 : true;
+  const el = document.getElementById('suma');
+  el.textContent = 'Σ ' + suma.toLocaleString('es-ES') + ' %';
+  el.className = 'suma ' + (ok?'ok':'mal');
+  document.getElementById('btnGuardar').disabled = !(ok && hayCambios());
+}
+
+async function guardar(){
+  const tareas = (EDIT||[]).filter(t=>t.Tarea.trim()!=='').map((t,i)=>({ Orden:i+1, Tarea:t.Tarea.trim(), Peso:Number(t.Peso)||0 }));
+  if (typeof SPTelice === 'undefined' || !SPTelice.guardarTareasPartida){
+    document.getElementById('estado').textContent = 'Sin SharePoint';
+    return;
+  }
+  document.getElementById('estado').textContent = 'Guardando…';
+  document.getElementById('btnGuardar').disabled = true;
+  try{
+    const res = await SPTelice.guardarTareasPartida(obraActiva, sel, tareas);
+    if(res.ok){
+      TAREAS[sel] = tareas.map(t=>({...t}));
+      if(tareas.length===0) delete TAREAS[sel];
+      EDIT = tareas.map(t=>({...t}));
+      document.getElementById('estado').textContent = `Guardado ✓ (${res.creadas} nuevas, ${res.actualizadas} act., ${res.borradas} borradas)`;
+      renderLista();
+      renderFicha();
+      document.getElementById('estado').textContent = 'Guardado ✓';
+    }else{
+      console.warn('[Tareas] errores:', res.errores);
+      document.getElementById('estado').textContent = res.errores.length + ' errores (ver consola)';
+    }
+  }catch(e){
+    document.getElementById('estado').textContent = 'Error: ' + e.message;
+  }
+}
+
+function copiarDe(){
+  const de = document.getElementById('selCopia').value;
+  if(!de || !TAREAS[de]) return;
+  EDIT = TAREAS[de].map(t=>({...t}));
+  renderFicha();
+}
+
+window.addEventListener('beforeunload', (e)=>{
+  if(EDIT && hayCambios()){ e.preventDefault(); e.returnValue=''; }
+});
+
+(async ()=>{
+  await conectarSP();
+  cargarObra('23-039');
+})();
+</script>
+</body>
+</html>
