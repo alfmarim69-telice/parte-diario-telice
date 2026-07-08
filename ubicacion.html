@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>¿Dónde estoy? · Parte Diario Telice</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{ --azul:#1F3864; --azul2:#2d4a7c; --verde:#548235; --naranja:#C55A11; --rojo:#c0392b;
+    --bg:#f4f5f7; --card:#ffffff; --border:#e3e6ea; --text:#1a2433; --text2:#5b6573;
+    --font:'Segoe UI',system-ui,-apple-system,sans-serif; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;display:flex;flex-direction:column}
+  header{background:var(--azul);color:#fff;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  header h1{font-size:16px;font-weight:600}
+  header .sub{font-size:11px;opacity:.85;margin-top:2px}
+  header select{font-family:var(--font);font-size:13px;padding:7px 10px;border-radius:6px;border:none;font-weight:600;color:var(--azul)}
+  #mapa{flex:1;min-height:280px;width:100%}
+  .panel{background:var(--card);border-top:1px solid var(--border);padding:14px 18px 22px}
+  .resultado{background:#eef4fb;border-radius:10px;padding:14px 16px;margin-bottom:12px;display:none}
+  .resultado.show{display:block}
+  .resultado .pk{font-size:26px;font-weight:800;color:var(--azul);font-family:Consolas,monospace}
+  .resultado .lugar{font-size:14px;color:var(--text);margin-top:4px}
+  .resultado .meta{font-size:11px;color:var(--text2);margin-top:6px}
+  .resultado .aviso-lejos{color:var(--naranja);font-weight:700;margin-top:6px;font-size:12px}
+  .botones{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+  button{font-family:var(--font);font-size:14px;padding:12px 16px;border-radius:8px;border:none;cursor:pointer;font-weight:600}
+  .btn-gps{background:var(--azul);color:#fff;flex:1;min-width:180px}
+  .btn-gps:disabled{background:#9aa5b5}
+  .btn-copiar{background:var(--verde);color:#fff}
+  .btn-copiar:disabled{background:#aab2ac}
+  .ayuda{font-size:12px;color:var(--text2);line-height:1.5}
+  .estado{font-size:11px;color:var(--text2);text-align:center;padding:6px}
+  .estado.err{color:var(--rojo);font-weight:600}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--verde);color:#fff;
+    padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .3s;z-index:9999}
+  .toast.show{opacity:1}
+  .leaflet-container{font-family:var(--font)}
+</style>
+<script src="msal-browser.min.js"></script>
+<script src="sp-integracion.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>📍 ¿Dónde estoy?</h1>
+    <div class="sub"><span id="estadoSP">Conectando…</span></div>
+  </div>
+  <select id="selObra" onchange="cargarObra(this.value)">
+    <option value="23-039">23-039 · Renovación Norte</option>
+    <option value="26-008">26-008 · LAV Lorca-Almería · Catenaria</option>
+  </select>
+</header>
+
+<div id="mapa"></div>
+
+<div class="panel">
+  <div class="botones">
+    <button class="btn-gps" id="btnGps" onclick="usarMiUbicacion()">📍 Usar mi ubicación GPS</button>
+  </div>
+  <p class="ayuda">O toca directamente un punto del mapa para señalar dónde estás.</p>
+
+  <div class="resultado" id="resultado">
+    <div class="pk" id="rPk">—</div>
+    <div class="lugar" id="rLugar">Buscando el lugar…</div>
+    <div class="meta" id="rMeta"></div>
+    <div class="aviso-lejos" id="rAviso" style="display:none;"></div>
+    <div class="botones" style="margin-top:10px;margin-bottom:0;">
+      <button class="btn-copiar" id="btnCopiar" onclick="copiarPk()">📋 Copiar PK para el parte</button>
+    </div>
+  </div>
+
+  <div class="estado" id="estado"></div>
+</div>
+
+<div class="toast" id="toast">PK copiado</div>
+
+<script>
+let obraActiva = '23-039';
+let TRAZA = [];          // [{pk, pkm, lat, lon}] ordenada por PK
+let mapa, polilinea, marcadorTraza, marcadorYo;
+let ultimoPkTexto = '';
+let spListo = false;
+
+function estadoSP(m){ document.getElementById('estadoSP').textContent = m; }
+function setEstado(m, esError){ const el=document.getElementById('estado'); el.textContent=m; el.className='estado'+(esError?' err':''); }
+
+// ── Conversión PK <-> metros (igual que planificacion.html) ──
+function pkATexto(m){
+  const km = Math.floor(m/1000); let resto = Math.round(m - km*1000);
+  if(resto===1000){ return (km+1)+'+000'; }
+  return km + '+' + String(resto).padStart(3,'0');
+}
+
+// ── Geometría: proyección del punto (lat,lon) sobre la polilínea de la traza ──
+function aXY(lat, lon, lat0, lon0){
+  const R = 6371000;
+  const x = (lon-lon0) * Math.PI/180 * R * Math.cos(lat0*Math.PI/180);
+  const y = (lat-lat0) * Math.PI/180 * R;
+  return {x,y};
+}
+
+function distanciaMetros(lat1,lon1,lat2,lon2){
+  const R = 6371000, toRad = Math.PI/180;
+  const dLat = (lat2-lat1)*toRad, dLon=(lon2-lon1)*toRad;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*toRad)*Math.cos(lat2*toRad)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+
+// Devuelve {pkm, lat, lon, distancia} del punto de la traza más cercano a (lat,lon)
+function proyectarEnTraza(lat, lon, traza){
+  if(!traza || traza.length===0) return null;
+  if(traza.length===1){
+    const p = traza[0];
+    return { pkm:p.pkm, lat:p.lat, lon:p.lon, distancia:distanciaMetros(lat,lon,p.lat,p.lon) };
+  }
+  const lat0 = traza[0].lat, lon0 = traza[0].lon;
+  const q = aXY(lat, lon, lat0, lon0);
+  let mejor = null;
+  for(let i=0; i<traza.length-1; i++){
+    const a = aXY(traza[i].lat, traza[i].lon, lat0, lon0);
+    const b = aXY(traza[i+1].lat, traza[i+1].lon, lat0, lon0);
+    const dx = b.x-a.x, dy = b.y-a.y;
+    const len2 = dx*dx+dy*dy;
+    let t = len2>0 ? ((q.x-a.x)*dx + (q.y-a.y)*dy) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const px = a.x + dx*t, py = a.y + dy*t;
+    const dist = Math.sqrt((q.x-px)**2 + (q.y-py)**2);
+    if(!mejor || dist < mejor.distancia){
+      const pkm = traza[i].pkm + t*(traza[i+1].pkm - traza[i].pkm);
+      const lat_p = traza[i].lat + t*(traza[i+1].lat - traza[i].lat);
+      const lon_p = traza[i].lon + t*(traza[i+1].lon - traza[i].lon);
+      mejor = { pkm, lat:lat_p, lon:lon_p, distancia:dist };
+    }
+  }
+  return mejor;
+}
+
+async function conectarSP(){
+  if (typeof SPTelice === 'undefined'){ estadoSP('Sin conexión'); return false; }
+  try{
+    await SPTelice.ensureReady();
+    if (!SPTelice.currentAccount()) await SPTelice.login();
+    spListo = true;
+    estadoSP('Conectado ✓');
+    return true;
+  }catch(e){ estadoSP('Sin conexión: ' + (e && e.message||'')); return false; }
+}
+
+async function cargarObra(cod){
+  obraActiva = cod;
+  document.getElementById('resultado').classList.remove('show');
+  TRAZA = [];
+  if (polilinea) { mapa.removeLayer(polilinea); polilinea = null; }
+  if (spListo && SPTelice.leerTrazaPK){
+    estadoSP('Cargando traza…');
+    try{ TRAZA = await SPTelice.leerTrazaPK(cod); }catch(e){ console.warn(e); }
+  }
+  estadoSP(TRAZA.length ? `Conectado ✓ · traza con ${TRAZA.length} puntos` : 'Conectado ✓ · sin traza cargada para esta obra');
+  dibujarTraza();
+}
+
+function dibujarTraza(){
+  if(TRAZA.length === 0){ mapa.setView([42.5,-4], 6); return; }
+  const latlngs = TRAZA.map(p=>[p.lat,p.lon]);
+  polilinea = L.polyline(latlngs, { color:'#1F3864', weight:5, opacity:0.85 }).addTo(mapa);
+  mapa.fitBounds(polilinea.getBounds(), { padding:[30,30] });
+}
+
+async function nombreDelLugar(lat, lon){
+  try{
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&accept-language=es`;
+    const res = await fetch(url, { headers: { 'Accept':'application/json' } });
+    if(!res.ok) return null;
+    const data = await res.json();
+    const a = data.address || {};
+    const pueblo = a.village || a.town || a.city || a.municipality || a.hamlet || '';
+    const provincia = a.state || a.province || '';
+    if(pueblo && provincia) return `${pueblo}, ${provincia}`;
+    if(pueblo) return pueblo;
+    return data.display_name ? data.display_name.split(',').slice(0,2).join(',') : null;
+  }catch(e){ return null; }
+}
+
+async function mostrarResultado(lat, lon, origen){
+  document.getElementById('resultado').classList.add('show');
+  document.getElementById('rPk').textContent = 'Calculando…';
+  document.getElementById('rLugar').textContent = 'Buscando el lugar…';
+  document.getElementById('rMeta').textContent = '';
+  document.getElementById('rAviso').style.display = 'none';
+  document.getElementById('btnCopiar').disabled = true;
+
+  if(marcadorYo) mapa.removeLayer(marcadorYo);
+  marcadorYo = L.circleMarker([lat,lon], { radius:8, color:'#fff', weight:2, fillColor:'#C55A11', fillOpacity:1 }).addTo(mapa);
+
+  if(TRAZA.length === 0){
+    document.getElementById('rPk').textContent = 'Sin traza';
+    document.getElementById('rLugar').textContent = 'No hay traza cargada para esta obra todavía.';
+    return;
+  }
+
+  const proy = proyectarEnTraza(lat, lon, TRAZA);
+  ultimoPkTexto = pkATexto(proy.pkm);
+  document.getElementById('rPk').textContent = 'PK ' + ultimoPkTexto;
+  document.getElementById('rMeta').textContent = origen + ' · a ' + proy.distancia.toFixed(0) + ' m de la traza cargada';
+  document.getElementById('btnCopiar').disabled = false;
+
+  if(marcadorTraza) mapa.removeLayer(marcadorTraza);
+  marcadorTraza = L.circleMarker([proy.lat,proy.lon], { radius:7, color:'#fff', weight:2, fillColor:'#1F3864', fillOpacity:1 }).addTo(mapa);
+
+  if(proy.distancia > 300){
+    document.getElementById('rAviso').style.display = 'block';
+    document.getElementById('rAviso').textContent = '⚠ Estás bastante lejos de la traza cargada — el PK es orientativo.';
+  }
+
+  const lugar = await nombreDelLugar(lat, lon);
+  document.getElementById('rLugar').textContent = lugar || '(no se pudo identificar el lugar)';
+}
+
+function usarMiUbicacion(){
+  if(!navigator.geolocation){ setEstado('Este navegador no soporta geolocalización', true); return; }
+  const btn = document.getElementById('btnGps');
+  btn.disabled = true; btn.textContent = '📍 Buscando señal GPS…';
+  setEstado('');
+  navigator.geolocation.getCurrentPosition(
+    (pos)=>{
+      btn.disabled = false; btn.textContent = '📍 Usar mi ubicación GPS';
+      mapa.setView([pos.coords.latitude, pos.coords.longitude], 15);
+      mostrarResultado(pos.coords.latitude, pos.coords.longitude, 'GPS del dispositivo');
+    },
+    (err)=>{
+      btn.disabled = false; btn.textContent = '📍 Usar mi ubicación GPS';
+      setEstado('No se pudo obtener el GPS: ' + err.message + '. Prueba a tocar el mapa directamente.', true);
+    },
+    { enableHighAccuracy:true, timeout:15000, maximumAge:0 }
+  );
+}
+
+function copiarPk(){
+  if(!ultimoPkTexto) return;
+  const texto = 'PK ' + ultimoPkTexto;
+  const hacerToast = ()=>{ const t=document.getElementById('toast'); t.textContent='Copiado: '+texto; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2000); };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(ultimoPkTexto).then(hacerToast).catch(hacerToast);
+  } else { hacerToast(); }
+}
+
+function initMapa(){
+  mapa = L.map('mapa', { zoomControl:true }).setView([42.5,-4], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap', maxZoom: 19
+  }).addTo(mapa);
+  mapa.on('click', (e)=>{ mostrarResultado(e.latlng.lat, e.latlng.lng, 'Punto marcado en el mapa'); });
+}
+
+(async ()=>{
+  initMapa();
+  await conectarSP();
+  await cargarObra('23-039');
+})();
+</script>
+</body>
+</html>

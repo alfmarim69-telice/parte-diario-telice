@@ -625,6 +625,104 @@ async function guardarDespieceMasivo(filas, onProgreso) {
 }
 
 // ═══════════════════════════════════════════════════════
+// TRAZA GEORREFERENCIADA (puntos PK -> Lat/Lon) para ubicación en campo
+// Lista M_TrazaPK: Proyecto | PK | Lat | Lon
+// ═══════════════════════════════════════════════════════
+var _trazaFieldMapCache = {};
+async function getTrazaFieldMap() {
+  if (!_trazaFieldMapCache['M_TrazaPK']) _trazaFieldMapCache['M_TrazaPK'] = await spFieldMap('M_TrazaPK');
+  return _trazaFieldMapCache['M_TrazaPK'];
+}
+function _pkATexto_m(m) {
+  var km = Math.floor(m / 1000), resto = Math.round(m - km * 1000);
+  if (resto === 1000) { km++; resto = 0; }
+  return km + '+' + String(resto).padStart(3, '0');
+}
+function _textoAPk_m(t) {
+  if (t == null) return null;
+  var s = String(t).trim().replace(',', '.');
+  if (s === '') return null;
+  if (s.indexOf('+') >= 0) {
+    var partes = s.split('+');
+    var km = parseFloat(partes[0]), m = parseFloat(partes[1]);
+    if (isNaN(km) || isNaN(m)) return null;
+    return km * 1000 + m;
+  }
+  var n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+// Devuelve los puntos de traza de una obra, ordenados por PK ascendente:
+// [{pk:'0+000', pkm:0, lat, lon}, ...]
+async function leerTrazaPK(proyecto) {
+  await ensureReady();
+  try {
+    var fm = await getTrazaFieldMap();
+    var cP = fm['Proyecto'] || 'field_1', cPk = fm['PK'] || 'field_2';
+    var cLat = fm['Lat'] || 'field_3', cLon = fm['Lon'] || 'field_4';
+    var data = await spGet("/lists/GetByTitle('M_TrazaPK')/items?$top=5000&$select=" + [cP, cPk, cLat, cLon].join(','));
+    var out = [];
+    (data.value || []).forEach(function (it) {
+      if (String(it[cP] || '').trim() !== proyecto) return;
+      var pkm = _textoAPk_m(it[cPk]);
+      var lat = Number(it[cLat]), lon = Number(it[cLon]);
+      if (pkm === null || isNaN(lat) || isNaN(lon)) return;
+      out.push({ pk: it[cPk], pkm: pkm, lat: lat, lon: lon });
+    });
+    out.sort(function (a, b) { return a.pkm - b.pkm; });
+    return out;
+  } catch (e) {
+    console.warn('[SP] M_TrazaPK no disponible:', e && e.message);
+    return [];
+  }
+}
+
+// Carga masiva de puntos de traza (mismo patrón de una sola lectura previa
+// que guardarDespieceMasivo). filas: [{Proyecto, PK, Lat, Lon}]
+async function guardarTrazaMasiva(filas, onProgreso) {
+  await ensureReady();
+  var fm = await getTrazaFieldMap();
+  var cP = fm['Proyecto'] || 'field_1', cPk = fm['PK'] || 'field_2';
+  var cLat = fm['Lat'] || 'field_3', cLon = fm['Lon'] || 'field_4';
+
+  var existentes = await spGet("/lists/GetByTitle('M_TrazaPK')/items?$select=Id,Title," + cP + "&$top=5000");
+  var porClave = {};
+  (existentes.value || []).forEach(function (it) { porClave[it.Title] = it.Id; });
+
+  var porProyecto = {};
+  filas.forEach(function (f) { (porProyecto[f.Proyecto] = porProyecto[f.Proyecto] || []).push(f); });
+
+  var clavesNuevasGlobal = {};
+  filas.forEach(function (f) { clavesNuevasGlobal[f.Proyecto + '|' + f.PK] = 1; });
+
+  var aBorrarIds = [];
+  (existentes.value || []).forEach(function (it) {
+    var proy = String(it[cP] || '').trim();
+    if (!porProyecto[proy]) return;
+    if (!clavesNuevasGlobal[it.Title]) aBorrarIds.push(it.Id);
+  });
+
+  var errores = [], creadas = 0, actualizadas = 0, borradas = 0, total = filas.length, i = 0;
+  for (var k = 0; k < filas.length; k++) {
+    var f = filas[k], clave = f.Proyecto + '|' + f.PK;
+    i++;
+    if (onProgreso && i % 20 === 0) onProgreso(i, total);
+    var body = {};
+    body[cP] = f.Proyecto; body[cPk] = f.PK; body[cLat] = Number(f.Lat); body[cLon] = Number(f.Lon);
+    try {
+      if (porClave[clave]) { await spPatch('M_TrazaPK', porClave[clave], body); actualizadas++; }
+      else { body.Title = clave; await spPost('M_TrazaPK', body); creadas++; }
+    } catch (e) { errores.push(clave + ': ' + e.message); }
+  }
+  for (var b = 0; b < aBorrarIds.length; b++) {
+    try { await spDelete('M_TrazaPK', aBorrarIds[b]); borradas++; }
+    catch (e) { errores.push('borrar id ' + aBorrarIds[b] + ': ' + e.message); }
+  }
+  if (onProgreso) onProgreso(total, total);
+  return { creadas: creadas, actualizadas: actualizadas, borradas: borradas, errores: errores, ok: errores.length === 0 };
+}
+
+// ═══════════════════════════════════════════════════════
 // GUARDADO DE PLANIFICACIÓN (comparación planificado vs ejecutado)
 // ═══════════════════════════════════════════════════════
 
@@ -1045,7 +1143,10 @@ global.SPTelice = {
   leerTareasPartida: leerTareasPartida,
   guardarTareasPartida: guardarTareasPartida,
   leerProduccionTareas: leerProduccionTareas,
-  guardarDespieceMasivo: guardarDespieceMasivo
+  guardarDespieceMasivo: guardarDespieceMasivo,
+  leerTrazaPK: leerTrazaPK,
+  guardarTrazaMasiva: guardarTrazaMasiva
 };
 
 })(window);
+

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Carga de traza georreferenciada · Telice</title>
+<style>
+  :root{ --azul:#1F3864; --azul2:#134080; --verde:#548235; --border:#dde1e7; --border2:#c8cdd6;
+    --text:#1a2030; --text2:#5a6478; --bg:#f0f2f5; --card:#fff; --font:'Segoe UI',system-ui,sans-serif; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px}
+  header{background:var(--azul2);color:#fff;padding:14px 22px}
+  header h1{font-size:18px}
+  header .sub{font-size:12px;opacity:.85;margin-top:2px}
+  .wrap{max-width:1000px;margin:20px auto;padding:0 16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;margin-bottom:16px}
+  .card h2{font-size:15px;margin-bottom:8px;color:var(--azul2)}
+  .card p{font-size:13px;color:var(--text2);margin-bottom:10px;line-height:1.5}
+  textarea{width:100%;min-height:160px;border:1px solid var(--border2);border-radius:6px;padding:10px;
+    font-family:Consolas,monospace;font-size:11px;resize:vertical}
+  button{font-family:var(--font);font-size:13px;padding:8px 14px;border-radius:6px;border:1px solid var(--border2);cursor:pointer}
+  .btn-primario{background:var(--verde);color:#fff;border:none;font-weight:600}
+  .btn-primario:disabled{background:#aaa;cursor:not-allowed}
+  select{font-family:var(--font);font-size:13px;padding:8px 10px;border-radius:6px;border:1px solid var(--border2)}
+  .fila-controles{display:flex;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap}
+  table{border-collapse:collapse;width:100%;font-size:12px;margin-top:12px}
+  th,td{border:1px solid var(--border);padding:5px 8px;text-align:left}
+  th{background:#f4f7fb;font-weight:600;position:sticky;top:0}
+  .estado{font-size:13px;font-weight:600}
+  .ok{color:var(--verde)} .err{color:#c0392b} .aviso{color:#b06000}
+  .resumen-chip{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;margin-right:8px}
+  .chip-ok{background:#e6f4ed;color:var(--verde)}
+  .chip-mal{background:#fdecea;color:#c0392b}
+  .tabla-scroll{max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:6px}
+  .progreso{font-size:12px;color:var(--text2);margin-top:6px}
+  code{background:#eef2f7;padding:1px 5px;border-radius:3px;font-size:12px}
+</style>
+<script src="msal-browser.min.js"></script>
+<script src="sp-integracion.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>Carga de traza georreferenciada</h1>
+  <div class="sub">Alimenta M_TrazaPK, la base de "¿Dónde estoy?" · <span id="estadoSP">Conectando…</span></div>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <h2>1 · Obra y datos de la traza</h2>
+    <p>Obra: <select id="selObra"><option value="23-039">23-039 · Renovación Norte</option><option value="26-008">26-008 · LAV Lorca-Almería · Catenaria</option></select></p>
+    <p>Pega 3 columnas separadas por tabulador, <b>sin cabecera</b>: <code>PK · Lat · Lon</code>.
+    El PK en formato <code>1+300</code>. Cuantos más puntos (cada 20-50 m en curvas, cada 100-200 m en recta),
+    más preciso será el cálculo del PK al ubicarse en campo. Estas coordenadas suelen exportarse del proyecto
+    constructivo / SIG en formato KML o shapefile — convierte esa exportación a estas 3 columnas antes de pegar.</p>
+    <textarea id="datos" placeholder="0+000&#9;42.0341&#9;-7.4392&#10;0+100&#9;42.0349&#9;-7.4381"></textarea>
+    <div class="fila-controles">
+      <button onclick="previsualizar()">Previsualizar</button>
+      <span class="estado" id="msgPrev"></span>
+    </div>
+  </div>
+
+  <div class="card" id="cardResumen" style="display:none">
+    <h2>2 · Revisión antes de cargar</h2>
+    <div id="chips"></div>
+    <div class="tabla-scroll"><table id="tablaPreview"></table></div>
+  </div>
+
+  <div class="card">
+    <h2>3 · Cargar a SharePoint</h2>
+    <p>Actualiza los puntos que coincidan, crea los nuevos y borra los que ya no estén en lo que has pegado
+    <b>para esta obra</b> — así puedes recargar la traza completa de una obra sin afectar a las demás.</p>
+    <div class="fila-controles">
+      <button class="btn-primario" id="btnCargar" onclick="cargar()" disabled>Cargar a M_TrazaPK</button>
+      <span class="estado" id="msgCarga"></span>
+    </div>
+    <div class="progreso" id="progreso"></div>
+  </div>
+</div>
+
+<script>
+let FILAS = [];
+
+function estadoSP(m){ document.getElementById('estadoSP').textContent = m; }
+
+(async ()=>{
+  if (typeof SPTelice === 'undefined'){ estadoSP('sp-integracion.js no cargado'); return; }
+  try{
+    await SPTelice.ensureReady();
+    if (!SPTelice.currentAccount()) await SPTelice.login();
+    estadoSP('Conectado ✓');
+  }catch(e){ estadoSP('Sin conexión: ' + (e && e.message || '')); }
+})();
+
+function pkValido(t){
+  const s = String(t).trim();
+  return /^\d+\+\d{1,3}(\.\d+)?$/.test(s) || /^\d+([.,]\d+)?$/.test(s);
+}
+
+function previsualizar(){
+  const raw = document.getElementById('datos').value.trim();
+  const obra = document.getElementById('selObra').value;
+  const msg = document.getElementById('msgPrev');
+  FILAS = [];
+  document.getElementById('cardResumen').style.display = 'none';
+  document.getElementById('btnCargar').disabled = true;
+  if(!raw){ msg.textContent='Pega los datos primero'; msg.className='estado aviso'; return; }
+
+  const errores = [];
+  raw.split(/\r?\n/).forEach((linea, i)=>{
+    if(!linea.trim()) return;
+    const c = linea.split('\t').map(s=>s.trim());
+    if(c.length < 3){ errores.push(`Línea ${i+1}: se esperan 3 columnas, hay ${c.length}`); return; }
+    const [pk, latTxt, lonTxt] = c;
+    const lat = parseFloat(latTxt.replace(',','.'));
+    const lon = parseFloat(lonTxt.replace(',','.'));
+    if(!pkValido(pk)){ errores.push(`Línea ${i+1}: PK no válido ("${pk}")`); return; }
+    if(isNaN(lat) || lat < -90 || lat > 90){ errores.push(`Línea ${i+1}: latitud no válida ("${latTxt}")`); return; }
+    if(isNaN(lon) || lon < -180 || lon > 180){ errores.push(`Línea ${i+1}: longitud no válida ("${lonTxt}")`); return; }
+    FILAS.push({ Proyecto: obra, PK: pk, Lat: lat, Lon: lon });
+  });
+
+  if(errores.length){
+    msg.textContent = errores.length + ' errores de formato.';
+    msg.className = 'estado err';
+    document.getElementById('cardResumen').style.display = 'block';
+    document.getElementById('chips').innerHTML = `<span class="resumen-chip chip-mal">${errores.length} líneas con error</span>`;
+    document.getElementById('tablaPreview').innerHTML = '<tr><td style="color:#c0392b">' + errores.slice(0,25).join('<br>') + '</td></tr>';
+    return;
+  }
+
+  msg.textContent = `${FILAS.length} puntos válidos para ${obra}`;
+  msg.className = 'estado ok';
+  document.getElementById('cardResumen').style.display = 'block';
+  document.getElementById('chips').innerHTML = `<span class="resumen-chip chip-ok">${FILAS.length} puntos</span><span class="resumen-chip chip-ok">Obra ${obra}</span>`;
+  let html = '<tr><th>PK</th><th>Lat</th><th>Lon</th></tr>';
+  FILAS.slice(0,50).forEach(f=>{ html += `<tr><td>${f.PK}</td><td>${f.Lat}</td><td>${f.Lon}</td></tr>`; });
+  if(FILAS.length>50) html += `<tr><td colspan="3" style="color:#5a6478">… y ${FILAS.length-50} puntos más</td></tr>`;
+  document.getElementById('tablaPreview').innerHTML = html;
+  document.getElementById('btnCargar').disabled = false;
+}
+
+async function cargar(){
+  const msg = document.getElementById('msgCarga');
+  const prog = document.getElementById('progreso');
+  if(FILAS.length===0){ msg.textContent='Previsualiza primero'; msg.className='estado aviso'; return; }
+  document.getElementById('btnCargar').disabled = true;
+  msg.textContent = 'Cargando…'; msg.className='estado';
+  try{
+    const res = await SPTelice.guardarTrazaMasiva(FILAS, (i,total)=>{ prog.textContent = `Punto ${i} de ${total}…`; });
+    prog.textContent = '';
+    if(res.ok){
+      msg.textContent = `Hecho: ${res.creadas} creados, ${res.actualizadas} actualizados, ${res.borradas} borrados.`;
+      msg.className = 'estado ok';
+    }else{
+      msg.textContent = `Terminado con ${res.errores.length} errores (ver consola F12).`;
+      msg.className = 'estado err';
+      console.warn(res.errores);
+    }
+  }catch(e){
+    prog.textContent = '';
+    msg.textContent = 'Error: ' + e.message; msg.className='estado err';
+  }
+  document.getElementById('btnCargar').disabled = false;
+}
+</script>
+</body>
+</html>
