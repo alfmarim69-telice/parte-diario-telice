@@ -1562,6 +1562,7 @@
         <span style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);">Ver período:</span>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="periodo-btn active" id="btn-diario" onclick="setPeriodo('diario')">Hoy</button>
+          <button class="periodo-btn" id="btn-semanal" onclick="setPeriodo('semanal')">Esta semana</button>
           <button class="periodo-btn" id="btn-mensual" onclick="setPeriodo('mensual')">Este mes</button>
           <button class="periodo-btn" id="btn-origen" onclick="setPeriodo('origen')">A origen</button>
         </div>
@@ -5515,7 +5516,7 @@ const COSTE_HORA = 25; // €/h referencia MOD — ajustable
 
 function setPeriodo(p) {
   _periodo = p;
-  ['diario','mensual','origen'].forEach(x => {
+  ['diario','semanal','mensual','origen'].forEach(x => {
     document.getElementById('btn-'+x).classList.toggle('active', x === p);
   });
   renderInforme();
@@ -5525,6 +5526,10 @@ function filtrarPartes(hist, periodo, fechaRef) {
   const ref = fechaRef || new Date().toISOString().split('T')[0];
   if (periodo === 'origen') return hist;
   if (periodo === 'diario') return hist.filter(p => (p.cabecera||{}).fecha === ref);
+  if (periodo === 'semanal') {
+    const wk = getISOWeekKey(ref);
+    return hist.filter(p => getISOWeekKey((p.cabecera||{}).fecha) === wk);
+  }
   if (periodo === 'mensual') {
     const mes = ref.substring(0, 7); // YYYY-MM
     return hist.filter(p => ((p.cabecera||{}).fecha||'').startsWith(mes));
@@ -5709,7 +5714,7 @@ function renderInforme() {
   const partesFiltrados = filtrarPartes(hist, _periodo, fechaRef);
 
   // Etiqueta período
-  const labels = { diario: `Hoy (${fechaRef})`, mensual: `Mes ${fechaRef.substring(0,7)}`, origen: 'A origen (acumulado)' };
+  const labels = { diario: `Hoy (${fechaRef})`, semanal: `Semana ${getISOWeekKey(fechaRef)}`, mensual: `Mes ${fechaRef.substring(0,7)}`, origen: 'A origen (acumulado)' };
   const nP = partesFiltrados.length;
   const avisoSinPartes = nP === 0 && _periodo !== 'origen'
     ? ' · <span style="color:var(--red)">Sin partes en este período</span>' : '';
@@ -5874,7 +5879,7 @@ function renderCumplimiento(hist, fechaRef) {
   });
 
   // Detalle por partida del período seleccionado en el informe
-  const perInforme = _periodo === 'diario' ? 'dia' : _periodo === 'mensual' ? 'mes' : 'origen';
+  const perInforme = _periodo === 'diario' ? 'dia' : _periodo === 'semanal' ? 'semana' : _periodo === 'mensual' ? 'mes' : 'origen';
   const cDet = calcularCumplimiento(hist, perInforme, fechaRef);
   const conDatos = cDet.detalle.filter(d => d.cantPlan > 0).sort((a,b) => a.pct - b.pct);
 
@@ -6122,6 +6127,7 @@ function exportarExcel() {
         display:none;
         position:fixed;
         overflow-y:auto;
+        -webkit-overflow-scrolling:touch;
         background: var(--bg2);
         border:1px solid var(--accent);
         border-top:none;
@@ -6312,7 +6318,11 @@ function exportarExcel() {
     }
     input.addEventListener('blur', ()=> setTimeout(cerrarPanel, 120));
 
-    window.addEventListener('scroll', ()=>{ if(panel.classList.contains('open')) cerrarPanel(); }, true);
+    window.addEventListener('scroll', (e)=>{
+      if(!panel.classList.contains('open')) return;
+      if(panel.contains(e.target)) return; // scroll DENTRO del propio desplegable: no cerrar
+      cerrarPanel();
+    }, true);
     window.addEventListener('resize', ()=>{ if(panel.classList.contains('open')) posicionarPanel(); });
 
     // Si el resto de la app hace sel.value = '...' directamente, reflejarlo en el input
