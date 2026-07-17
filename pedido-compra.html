@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pedido de Compra · Telice</title>
+<style>
+:root{
+  --azul:#1F3864; --azul2:#2d4a7c; --verde:#548235; --naranja:#C55A11; --rojo:#c0392b;
+  --bg:#f4f5f7; --card:#ffffff; --border:#e3e6ea; --border2:#cfd4da;
+  --text:#1a2433; --text2:#5b6573;
+  --font:'Segoe UI',system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13px}
+header{background:var(--azul);color:#fff;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+header h1{font-size:17px;font-weight:600}
+header .sub{font-size:11px;opacity:.85;margin-top:2px}
+.tabs{display:flex;gap:6px}
+.tabs button{background:rgba(255,255,255,.12);border:none;color:#fff;padding:9px 16px;border-radius:6px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer}
+.tabs button.on{background:#fff;color:var(--azul)}
+.wrap{max-width:1100px;margin:22px auto;padding:0 18px 60px}
+.view{display:none}
+.view.on{display:block}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:22px;margin-bottom:18px}
+.card h2{font-size:14px;color:var(--azul);text-transform:uppercase;letter-spacing:.4px;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid var(--border)}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.grid.g3{grid-template-columns:repeat(3,1fr)}
+.grid.g2{grid-template-columns:repeat(2,1fr)}
+.field label{display:block;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px}
+.field input,.field select,.field textarea{width:100%;border:1px solid var(--border2);border-radius:6px;padding:8px 10px;font-family:var(--font);font-size:13px;color:var(--text)}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--azul2);box-shadow:0 0 0 3px rgba(45,74,124,.12)}
+.field input[readonly]{background:#f2f3f5;color:var(--text2)}
+.field textarea{resize:vertical;min-height:60px}
+table.mat{border-collapse:collapse;width:100%;margin-top:6px}
+table.mat th{text-align:left;font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;padding:6px 6px;border-bottom:2px solid var(--border2);white-space:nowrap}
+table.mat td{padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:top}
+table.mat input[type=text],table.mat input[type=number]{width:100%;border:1px solid var(--border2);border-radius:5px;padding:6px 8px;font-family:var(--font);font-size:12px}
+table.mat input[type=number]{text-align:right;font-family:Consolas,monospace}
+table.mat tr.opcional input{font-style:italic}
+table.mat tr.opcional{background:#fff8ee}
+.chk{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--text2)}
+.btn{border:none;border-radius:6px;padding:9px 16px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer}
+.btn.prim{background:var(--verde);color:#fff}
+.btn.prim:disabled{background:#aab2ac;cursor:not-allowed}
+.btn.sec{background:#eef1f5;color:var(--text)}
+.btn.del{background:#fdecea;color:var(--rojo);padding:6px 10px;font-size:11px}
+.btn.big{padding:14px 28px;font-size:15px}
+.fila-acciones{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap}
+.estado-conn{font-size:11px;color:rgba(255,255,255,.85)}
+.banner{padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none}
+.banner.show{display:block}
+.banner.ok{background:#e6f4ed;color:var(--verde);border:1px solid #c7e6d3}
+.banner.err{background:#fdecea;color:var(--rojo);border:1px solid #f5c6c6}
+.banner.warn{background:#fff4e0;color:var(--naranja);border:1px solid #f2d9a8}
+/* pills / progreso */
+.pill{display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;color:#fff;white-space:nowrap}
+.progreso{display:flex;gap:2px;width:100%;max-width:160px}
+.progreso i{flex:1;height:6px;border-radius:3px;background:var(--border2)}
+.progreso i.done{background:var(--verde)}
+/* tabla seguimiento */
+.filtros{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:end}
+.filtros .field{width:190px}
+table.segui{border-collapse:collapse;width:100%;font-size:12px}
+table.segui th{text-align:left;padding:8px 8px;background:#eef1f5;color:var(--text2);font-size:10px;text-transform:uppercase;letter-spacing:.3px;position:sticky;top:0}
+table.segui td{padding:8px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+table.segui tr.exp-row{background:#f9fafb}
+table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;border:1px solid var(--border2)}
+.link-carpeta{font-size:11px;color:var(--azul2);text-decoration:none;font-weight:600}
+.vacio{text-align:center;color:var(--text2);padding:40px 0}
+.small{font-size:11px;color:var(--text2)}
+</style>
+<script src="msal-browser.min.js"></script>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Pedido de Compra</h1>
+    <div class="sub">TELICE · <span id="estadoConn" class="estado-conn">Conectando…</span></div>
+  </div>
+  <div class="tabs">
+    <button id="tabBtnNueva" class="on" onclick="cambiarVista('nueva')">Nueva solicitud</button>
+    <button id="tabBtnSeg" onclick="cambiarVista('seguimiento')">Seguimiento de pedidos</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- ══════════════ VISTA: NUEVA SOLICITUD ══════════════ -->
+  <div id="viewNueva" class="view on">
+
+    <div id="banner" class="banner"></div>
+
+    <div class="card">
+      <h2>Datos generales</h2>
+      <div class="grid">
+        <div class="field">
+          <label>N.º de solicitud</label>
+          <input type="text" id="fNumSolicitud" readonly value="(se genera al enviar)">
+        </div>
+        <div class="field">
+          <label>Fecha de solicitud</label>
+          <input type="text" id="fFechaSolicitud" readonly>
+        </div>
+        <div class="field">
+          <label>Fecha de entrega *</label>
+          <input type="date" id="fFechaEntrega">
+        </div>
+        <div class="field">
+          <label>Prioridad *</label>
+          <select id="fPrioridad">
+            <option value="Baja">Baja</option>
+            <option value="Media" selected>Media</option>
+            <option value="Alta">Alta</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid" style="margin-top:14px">
+        <div class="field">
+          <label>Departamento *</label>
+          <select id="fDepartamento" onchange="onDepartamentoChange()">
+            <option value="">Selecciona…</option>
+            <option>Catenaria</option>
+            <option>Instalaciones</option>
+            <option>Subestaciones</option>
+            <option>General</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Solicitante *</label>
+          <input type="text" id="fSolicitante" list="dlNombres" placeholder="Tu nombre">
+          <datalist id="dlNombres"></datalist>
+        </div>
+        <div class="field">
+          <label>Jefe de obra *</label>
+          <select id="fJefeObra" onchange="onJefeObraChange()">
+            <option value="">Selecciona departamento primero…</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Jefe de área</label>
+          <input type="text" id="fJefeArea" readonly placeholder="Autocompletado">
+        </div>
+      </div>
+      <div class="grid" style="margin-top:14px">
+        <div class="field">
+          <label>Obra *</label>
+          <input type="text" id="fObra" placeholder="Ej. 25-388 LAC Lorca-Almería">
+        </div>
+        <div class="field">
+          <label>Centro de coste</label>
+          <input type="text" id="fCentroCoste">
+        </div>
+        <div class="field">
+          <label>Número de almacén</label>
+          <input type="text" id="fAlmacen">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Materiales solicitados</h2>
+      <table class="mat" id="tablaMat">
+        <thead>
+          <tr>
+            <th style="width:16%">Descripción</th>
+            <th style="width:14%">Medidas / Especificación</th>
+            <th style="width:6%">Cantidad</th>
+            <th style="width:6%">Ud</th>
+            <th style="width:8%">PEC</th>
+            <th style="width:18%">Características específicas</th>
+            <th style="width:8%">Ref. pedido anterior</th>
+            <th style="width:5%">Ficha técnica</th>
+            <th style="width:5%">Doc. calidad</th>
+            <th style="width:5%">Opcional</th>
+            <th style="width:4%"></th>
+          </tr>
+        </thead>
+        <tbody id="filasMat"></tbody>
+      </table>
+      <div class="fila-acciones">
+        <button class="btn sec" onclick="addFilaMat()">+ Añadir material</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Datos de envío</h2>
+      <div class="grid g3">
+        <div class="field">
+          <label>Dirección de entrega</label>
+          <input type="text" id="fDireccion" placeholder="Obra / agencia externa">
+        </div>
+        <div class="field">
+          <label>Persona de contacto</label>
+          <input type="text" id="fContacto">
+        </div>
+        <div class="field">
+          <label>Horario</label>
+          <input type="text" id="fHorario">
+        </div>
+      </div>
+      <div class="grid g3" style="margin-top:14px">
+        <div class="field">
+          <label>Plazo de entrega</label>
+          <input type="date" id="fPlazo">
+        </div>
+        <div class="field">
+          <label>Número de envíos</label>
+          <input type="text" id="fNumEnvios" value="UNICO">
+        </div>
+        <div class="field">
+          <label>Adjuntar documento</label>
+          <input type="file" id="fAdjunto">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Observaciones</h2>
+      <div class="field">
+        <textarea id="fObservaciones" placeholder="Notas adicionales para compras…"></textarea>
+      </div>
+    </div>
+
+    <div class="fila-acciones">
+      <button class="btn prim big" id="btnEnviar" onclick="enviarSolicitud()">Enviar solicitud de pedido</button>
+      <button class="btn sec" onclick="if(confirm('¿Vaciar el formulario?'))location.reload()">Limpiar formulario</button>
+      <span class="small" id="estadoEnvio"></span>
+    </div>
+  </div>
+
+  <!-- ══════════════ VISTA: SEGUIMIENTO ══════════════ -->
+  <div id="viewSeguimiento" class="view">
+    <div class="card">
+      <h2>Seguimiento de pedidos</h2>
+      <div class="filtros">
+        <div class="field">
+          <label>Departamento</label>
+          <select id="filtroDep" onchange="renderTablaSeg()">
+            <option value="">Todos</option>
+            <option>Catenaria</option>
+            <option>Instalaciones</option>
+            <option>Subestaciones</option>
+            <option>General</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Estado</label>
+          <select id="filtroEstado" onchange="renderTablaSeg()">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="field" style="width:240px">
+          <label>Buscar (obra / jefe de obra)</label>
+          <input type="text" id="filtroTexto" oninput="renderTablaSeg()" placeholder="Escribe para filtrar…">
+        </div>
+        <button class="btn sec" onclick="cargarPedidos()">↻ Actualizar</button>
+      </div>
+      <div id="tablaSegWrap"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ════════════════════ CONFIG / MSAL / SP REST (propio, no toca sp-integracion.js) ════════════════════ */
+var CFG = null, MSAL = null;
+
+var ESTADOS = ['Enviado','En revision de compras','Enviado a proveedores','Recibidas ofertas',
+               'En proceso de comparativo','En firmas de aprobacion','Aprobado','Hecho el pedido'];
+var ESTADO_COLOR = {
+  'Enviado':'#8a97ab', 'En revision de compras':'#5b7fb5', 'Enviado a proveedores':'#3d6bb0',
+  'Recibidas ofertas':'#C55A11', 'En proceso de comparativo':'#b9691a', 'En firmas de aprobacion':'#b8860b',
+  'Aprobado':'#6a9c3f', 'Hecho el pedido':'#548235'
+};
+
+// Correos fijos de compras (según ficha origen). Ajustar aquí si cambian.
+var CORREOS_COMPRAS = ['jmsanchez.garcia@telice.es', 'compras@telice.es'];
+
+function carpetaActual() {
+  var base = window.location.pathname.replace(/\/[^/]*$/, '/');
+  return window.location.origin + base;
+}
+var REDIRECT_URI = carpetaActual();
+
+async function loadConfig() {
+  var base = window.location.pathname.replace(/\/[^/]*$/, '/');
+  var r = await fetch(window.location.origin + base + 'config.json');
+  if (!r.ok) throw new Error('config.json no encontrado');
+  return r.json();
+}
+function initMsal(cfg) {
+  MSAL = new msal.PublicClientApplication({
+    auth: { clientId: cfg.clientId, authority: 'https://login.microsoftonline.com/' + cfg.tenantId, redirectUri: REDIRECT_URI },
+    cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
+  });
+}
+function getScopes(){ return [new URL(CFG.siteUrl).origin + '/AllSites.Manage']; }
+async function ensureReady(){ if(!CFG) CFG = await loadConfig(); if(!MSAL) initMsal(CFG); }
+async function login(){ await ensureReady(); var r = await MSAL.loginPopup({scopes:getScopes()}); return r.account; }
+function currentAccount(){ var a = MSAL.getAllAccounts(); return a.length ? a[0] : null; }
+async function getToken(){
+  var a = MSAL.getAllAccounts();
+  if(!a.length) throw new Error('Sin sesión activa');
+  try{ return (await MSAL.acquireTokenSilent({scopes:getScopes(), account:a[0]})).accessToken; }
+  catch(e){ return (await MSAL.acquireTokenPopup({scopes:getScopes()})).accessToken; }
+}
+function spUrl(path){ return CFG.siteUrl.replace(/\/$/,'') + '/_api/web' + path; }
+async function spGet(path){
+  var t = await getToken();
+  var r = await fetch(spUrl(path), { headers:{ 'Authorization':'Bearer '+t, 'Accept':'application/json;odata=nometadata' } });
+  if(!r.ok) throw new Error('HTTP '+r.status+' GET '+path);
+  return r.json();
+}
+async function getDigest(){
+  var t = await getToken();
+  var r = await fetch(CFG.siteUrl.replace(/\/$/,'') + '/_api/contextinfo', {
+    method:'POST', headers:{ 'Authorization':'Bearer '+t, 'Accept':'application/json;odata=verbose' }
+  });
+  if(!r.ok) throw new Error('contextinfo HTTP '+r.status);
+  var d = await r.json();
+  return d.d.GetContextWebInformation.FormDigestValue;
+}
+async function spPost(listTitle, body){
+  var t = await getToken(), dgst = await getDigest();
+  var r = await fetch(spUrl("/lists/GetByTitle('"+esc(listTitle)+"')/items"), {
+    method:'POST',
+    headers:{ 'Authorization':'Bearer '+t, 'Accept':'application/json;odata=nometadata',
+              'Content-Type':'application/json;odata=nometadata', 'X-RequestDigest':dgst },
+    body: JSON.stringify(body)
+  });
+  if(!r.ok){ throw new Error('HTTP '+r.status+' POST '+listTitle+': '+await safeErr(r)); }
+  return r.json();
+}
+async function spPatch(listTitle, id, body){
+  var t = await getToken(), dgst = await getDigest();
+  var r = await fetch(spUrl("/lists/GetByTitle('"+esc(listTitle)+"')/items("+id+")"), {
+    method:'POST',
+    headers:{ 'Authorization':'Bearer '+t, 'Accept':'application/json;odata=nometadata',
+              'Content-Type':'application/json;odata=nometadata', 'X-RequestDigest':dgst,
+              'X-HTTP-Method':'MERGE', 'IF-MATCH':'*' },
+    body: JSON.stringify(body)
+  });
+  if(!r.ok && r.status!==204) throw new Error('HTTP '+r.status+' PATCH '+listTitle);
+  return true;
+}
+function esc(s){ return s.replace(/'/g,"''"); }
+async function safeErr(r){ try{ var j=await r.json(); return (j.error&&j.error.message&&j.error.message.value)||r.status; }catch(e){return r.status;} }
+
+/* ---- Carpetas / ficheros / correo (usan el mismo token SharePoint, sin permisos extra de Graph) ---- */
+function safeSeg(s){ return String(s||'').replace(/[~#%&*:<>?\/\\{}|"]/g,'').trim() || 'General'; }
+function siteServerRelative(){ return new URL(CFG.siteUrl).pathname; }
+
+async function ensureFolderPath(relPath){
+  var parts = relPath.split('/').filter(Boolean);
+  var cur = siteServerRelative() + '/Documentos compartidos';
+  for(var i=0;i<parts.length;i++){
+    cur = cur + '/' + parts[i];
+    await ensureOneFolder(cur);
+  }
+  return cur;
+}
+async function ensureOneFolder(serverRelPath){
+  var t = await getToken();
+  var enc = serverRelPath.split('/').map(encodeURIComponent).join('/');
+  var chk = await fetch(spUrl("/GetFolderByServerRelativeUrl('"+enc+"')"), {
+    headers:{ 'Authorization':'Bearer '+t, 'Accept':'application/json;odata=nometadata' }
+  });
+  if(chk.ok) return;
+  var dgst = await getDigest();
+  var r = await fetch(spUrl("/folders/add('"+enc+"')"), {
+    method:'POST', headers:{ 'Authorization':'Bearer '+t, 'Accept':'application/json;odata=nometadata', 'X-RequestDigest':dgst }
+  });
+  if(!r.ok) throw new Error('No se pudo crear carpeta '+serverRelPath);
+}
+async function uploadFileToFolder(folderServerRel, filename, content){
+  var t = await getToken(), dgst = await getDigest();
+  var enc = folderServerRel.split('/').map(encodeURIComponent).join('/');
+  var r = await fetch(spUrl("/GetFolderByServerRelativeUrl('"+enc+"')/Files/add(overwrite=true,url='"+encodeURIComponent(filename)+"')"), {
+    method:'POST',
+    headers:{ 'Authorization':'Bearer '+t, 'Accept':'application/json;odata=nometadata', 'X-RequestDigest':dgst },
+    body: content
+  });
+  if(!r.ok) throw new Error('No se pudo subir el fichero '+filename);
+  var j = await r.json();
+  return j.ServerRelativeUrl || null;
+}
+async function sendMailSP(to, subject, bodyHtml){
+  var t = await getToken(), dgst = await getDigest();
+  var r = await fetch(CFG.siteUrl.replace(/\/$/,'') + "/_api/SP.Utilities.Utility.SendEmail", {
+    method:'POST',
+    headers:{ 'Authorization':'Bearer '+t, 'Accept':'application/json;odata=verbose',
+              'Content-Type':'application/json;odata=verbose', 'X-RequestDigest':dgst },
+    body: JSON.stringify({ properties:{
+      __metadata:{type:'SP.Utilities.EmailProperties'},
+      To:{results:to}, Subject:subject, Body:bodyHtml
+    }})
+  });
+  if(!r.ok) throw new Error('HTTP '+r.status+' SendEmail: '+await safeErr(r));
+  return true;
+}
+
+/* ════════════════════ ESTADO GENERAL DE CONEXIÓN ════════════════════ */
+var JEFES_OBRA = []; // {Nombre, Departamento, Correo, ResponsableArea, EsResponsable}
+
+function setConn(msg){ document.getElementById('estadoConn').textContent = msg; }
+
+async function iniciar(){
+  document.getElementById('fFechaSolicitud').value = new Date().toISOString().slice(0,10);
+  try{
+    await ensureReady();
+    if(!currentAccount()){ setConn('Iniciando sesión…'); await login(); }
+    setConn('Conectado · ' + (currentAccount().username || currentAccount().name || ''));
+    await cargarJefesObra();
+    llenarFiltroEstado();
+  }catch(e){
+    setConn('Sin conexión (' + e.message + ')');
+    console.error(e);
+  }
+}
+
+async function cargarJefesObra(){
+  var data = await spGet("/lists/GetByTitle('M_JefesObra')/items?$select=Title,Departamento,Correo,ResponsableArea,EsResponsable&$top=500");
+  JEFES_OBRA = (data.value||[]).map(function(x){
+    return { Nombre:x.Title, Departamento:x.Departamento, Correo:x.Correo, ResponsableArea:x.ResponsableArea, EsResponsable:!!x.EsResponsable };
+  });
+  var dl = document.getElementById('dlNombres');
+  dl.innerHTML = JEFES_OBRA.map(function(j){ return '<option value="'+j.Nombre+'">'; }).join('');
+}
+
+function onDepartamentoChange(){
+  var dep = document.getElementById('fDepartamento').value;
+  var sel = document.getElementById('fJefeObra');
+  var lista = JEFES_OBRA.filter(function(j){ return j.Departamento===dep; });
+  sel.innerHTML = '<option value="">Selecciona…</option>' +
+    lista.map(function(j){ return '<option value="'+j.Nombre+'">'+j.Nombre+'</option>'; }).join('');
+  document.getElementById('fJefeArea').value = '';
+}
+function onJefeObraChange(){
+  var nombre = document.getElementById('fJefeObra').value;
+  var j = JEFES_OBRA.find(function(x){ return x.Nombre===nombre; });
+  document.getElementById('fJefeArea').value = j ? j.ResponsableArea : '';
+}
+
+/* ════════════════════ MATERIALES: FILAS DINÁMICAS ════════════════════ */
+var matSeq = 0;
+function addFilaMat(){
+  matSeq++;
+  var tr = document.createElement('tr');
+  tr.id = 'matrow-'+matSeq;
+  tr.innerHTML =
+    '<td><input type="text" data-f="desc"></td>' +
+    '<td><input type="text" data-f="medidas"></td>' +
+    '<td><input type="number" data-f="cant" min="0" step="0.01"></td>' +
+    '<td><input type="text" data-f="ud"></td>' +
+    '<td><input type="text" data-f="pec"></td>' +
+    '<td><input type="text" data-f="caract"></td>' +
+    '<td><input type="text" data-f="refant"></td>' +
+    '<td><div class="chk"><input type="checkbox" data-f="ficha"></div></td>' +
+    '<td><div class="chk"><input type="checkbox" data-f="calidad"></div></td>' +
+    '<td><div class="chk"><input type="checkbox" data-f="opcional" onchange="toggleOpcional('+matSeq+')"></div></td>' +
+    '<td><button class="btn del" onclick="document.getElementById(\'matrow-'+matSeq+'\').remove()">✕</button></td>';
+  document.getElementById('filasMat').appendChild(tr);
+}
+function toggleOpcional(id){
+  var tr = document.getElementById('matrow-'+id);
+  var chk = tr.querySelector('[data-f="opcional"]').checked;
+  tr.classList.toggle('opcional', chk);
+}
+function leerMateriales(){
+  var out = [];
+  document.querySelectorAll('#filasMat tr').forEach(function(tr){
+    function v(f){ var el = tr.querySelector('[data-f="'+f+'"]'); return el ? (el.type==='checkbox'?el.checked:el.value.trim()) : ''; }
+    if(!v('desc') && !v('cant')) return;
+    out.push({ desc:v('desc'), medidas:v('medidas'), cant:v('cant'), ud:v('ud'), pec:v('pec'),
+               caract:v('caract'), refant:v('refant'), ficha:v('ficha'), calidad:v('calidad'), opcional:v('opcional') });
+  });
+  return out;
+}
+addFilaMat(); // fila inicial
+
+/* ════════════════════ ENVÍO DE SOLICITUD ════════════════════ */
+function showBanner(tipo, msg){
+  var b = document.getElementById('banner');
+  b.className = 'banner show ' + tipo;
+  b.textContent = msg;
+}
+function pad4(n){ return String(n).padStart(4,'0'); }
+
+async function generarNumSolicitud(){
+  var anio = new Date().getFullYear();
+  var data = await spGet("/lists/GetByTitle('PedidosCompra')/items?$select=Title&$top=5000");
+  var prefijo = 'SOL-'+anio;
+  var count = (data.value||[]).filter(function(x){ return (x.Title||'').indexOf(prefijo)===0; }).length;
+  return prefijo + pad4(count+1);
+}
+
+async function enviarSolicitud(){
+  var dep = document.getElementById('fDepartamento').value;
+  var jefeObraNombre = document.getElementById('fJefeObra').value;
+  var obra = document.getElementById('fObra').value.trim();
+  var fechaEntrega = document.getElementById('fFechaEntrega').value;
+  var solicitante = document.getElementById('fSolicitante').value.trim();
+  var materiales = leerMateriales();
+
+  if(!dep || !jefeObraNombre || !obra || !fechaEntrega || !solicitante){
+    showBanner('err', 'Faltan campos obligatorios: Departamento, Solicitante, Jefe de obra, Obra y Fecha de entrega.');
+    return;
+  }
+  if(materiales.length===0){
+    showBanner('err', 'Añade al menos un material con descripción y cantidad.');
+    return;
+  }
+
+  var btn = document.getElementById('btnEnviar');
+  btn.disabled = true;
+  document.getElementById('estadoEnvio').textContent = 'Enviando…';
+
+  try{
+    await ensureReady();
+    if(!currentAccount()) await login();
+
+    var jefeObra = JEFES_OBRA.find(function(x){ return x.Nombre===jefeObraNombre; }) || {};
+    var nSolicitud = await generarNumSolicitud();
+    var fechaSolicitud = document.getElementById('fFechaSolicitud').value;
+
+    // 1) Carpeta: Pedidos/Departamento/JefeObra/Obra
+    var relPath = ['Pedidos', safeSeg(dep), safeSeg(jefeObraNombre), safeSeg(obra)].join('/');
+    var folderServerRel = null;
+    try{ folderServerRel = await ensureFolderPath(relPath); }
+    catch(e){ console.warn('No se pudo crear la carpeta:', e.message); }
+
+    var folderWebUrl = folderServerRel ? (new URL(CFG.siteUrl).origin + folderServerRel) : '';
+
+    // 2) Cabecera en PedidosCompra
+    var cab = await spPost('PedidosCompra', {
+      Title: nSolicitud,
+      FechaSolicitud: fechaSolicitud,
+      FechaEntrega: fechaEntrega,
+      Prioridad: document.getElementById('fPrioridad').value,
+      Departamento: dep,
+      Obra: obra,
+      CentroCoste: document.getElementById('fCentroCoste').value.trim(),
+      NumeroAlmacen: document.getElementById('fAlmacen').value.trim(),
+      Solicitante: solicitante,
+      JefeObra: jefeObraNombre,
+      JefeArea: jefeObra.ResponsableArea || '',
+      DireccionEntrega: document.getElementById('fDireccion').value.trim(),
+      PersonaContacto: document.getElementById('fContacto').value.trim(),
+      Horario: document.getElementById('fHorario').value.trim(),
+      NumeroEnvios: document.getElementById('fNumEnvios').value.trim(),
+      PlazoEntrega: document.getElementById('fPlazo').value || fechaEntrega,
+      Estado: 'Enviado',
+      UrlCarpeta: folderWebUrl,
+      Observaciones: document.getElementById('fObservaciones').value.trim()
+    });
+
+    // 3) Líneas de material
+    for(var i=0;i<materiales.length;i++){
+      var m = materiales[i];
+      await spPost('PedidosCompraLineas', {
+        Title: nSolicitud + ' - L' + (i+1),
+        SolicitudID: nSolicitud,
+        DescripcionMaterial: m.desc,
+        MedidasEspecificacion: m.medidas,
+        Cantidad: m.cant ? Number(m.cant) : null,
+        Unidad: m.ud,
+        PEC: m.pec,
+        CaracteristicasEspecificas: (m.opcional?'[OPCIONAL] ':'') + m.caract,
+        RefPedidoAnterior: m.refant,
+        FichaTecnica: !!m.ficha,
+        DocumentacionCalidad: !!m.calidad
+      });
+    }
+
+    // 4) Documento resumen (texto plano) en la carpeta
+    if(folderServerRel){
+      try{
+        var resumen = buildResumenTexto(nSolicitud, {dep:dep, obra:obra, jefeObra:jefeObraNombre, jefeArea:jefeObra.ResponsableArea,
+          solicitante:solicitante, fechaSolicitud:fechaSolicitud, fechaEntrega:fechaEntrega,
+          prioridad:document.getElementById('fPrioridad').value}, materiales);
+        await uploadFileToFolder(folderServerRel, nSolicitud + '.txt', resumen);
+      }catch(e){ console.warn('No se pudo guardar el documento resumen:', e.message); }
+    }
+
+    // 5) Email automático a jefe de área + compras
+    var destinatarios = CORREOS_COMPRAS.slice();
+    if(jefeObra.ResponsableArea){
+      var jArea = JEFES_OBRA.find(function(x){ return x.Nombre===jefeObra.ResponsableArea; });
+      if(jArea && jArea.Correo) destinatarios.push(jArea.Correo);
+    }
+    var mailOk = true, mailErr = '';
+    try{
+      var cuerpo = '<p>Nueva solicitud de pedido <b>'+nSolicitud+'</b> — Obra '+obra+' ('+dep+').</p>' +
+        '<p>Jefe de obra: '+jefeObraNombre+'<br>Solicitante: '+solicitante+'<br>Prioridad: '+document.getElementById('fPrioridad').value+
+        '<br>Fecha de entrega solicitada: '+fechaEntrega+'</p>' +
+        (folderWebUrl ? '<p>Carpeta: <a href="'+folderWebUrl+'">'+folderWebUrl+'</a></p>' : '');
+      await sendMailSP(destinatarios, 'Nueva solicitud de pedido ' + nSolicitud + ' - ' + obra, cuerpo);
+    }catch(e){ mailOk = false; mailErr = e.message; }
+
+    if(mailOk){
+      showBanner('ok', 'Solicitud ' + nSolicitud + ' enviada correctamente. Correo enviado a: ' + destinatarios.join(', '));
+    }else{
+      showBanner('warn', 'Solicitud ' + nSolicitud + ' guardada, pero el envío de correo automático falló (' + mailErr +
+        '). Puede que el correo saliente de SharePoint no esté configurado en el tenant — avisa a compras manualmente por esta vez.');
+    }
+    document.getElementById('estadoEnvio').textContent = '';
+    setTimeout(function(){ location.reload(); }, 4500);
+
+  }catch(e){
+    console.error(e);
+    showBanner('err', 'Error al enviar la solicitud: ' + e.message);
+    document.getElementById('estadoEnvio').textContent = '';
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function buildResumenTexto(n, cab, materiales){
+  var l = [];
+  l.push('FICHA DE SOLICITUD DE PEDIDO — ' + n);
+  l.push('='.repeat(50));
+  l.push('Departamento: ' + cab.dep);
+  l.push('Obra: ' + cab.obra);
+  l.push('Jefe de obra: ' + cab.jefeObra + '   Jefe de área: ' + (cab.jefeArea||''));
+  l.push('Solicitante: ' + cab.solicitante);
+  l.push('Fecha solicitud: ' + cab.fechaSolicitud + '   Fecha entrega: ' + cab.fechaEntrega);
+  l.push('Prioridad: ' + cab.prioridad);
+  l.push('');
+  l.push('MATERIALES SOLICITADOS');
+  l.push('-'.repeat(50));
+  materiales.forEach(function(m, i){
+    l.push((i+1) + '. ' + (m.opcional?'[OPCIONAL] ':'') + m.desc + '  |  ' + m.medidas);
+    l.push('   Cantidad: ' + m.cant + ' ' + m.ud + (m.pec?('   PEC: '+m.pec):''));
+    if(m.caract) l.push('   ' + m.caract);
+    if(m.refant) l.push('   Ref. pedido anterior: ' + m.refant);
+  });
+  return l.join('\n');
+}
+
+/* ════════════════════ SEGUIMIENTO ════════════════════ */
+var PEDIDOS_CACHE = [];
+
+function llenarFiltroEstado(){
+  var sel = document.getElementById('filtroEstado');
+  sel.innerHTML = '<option value="">Todos</option>' + ESTADOS.map(function(e){ return '<option>'+e+'</option>'; }).join('');
+}
+
+async function cargarPedidos(){
+  document.getElementById('tablaSegWrap').innerHTML = '<div class="vacio">Cargando…</div>';
+  try{
+    await ensureReady();
+    if(!currentAccount()) await login();
+    var data = await spGet("/lists/GetByTitle('PedidosCompra')/items?$top=5000&$select=Id,Title,FechaSolicitud,FechaEntrega,Prioridad,Departamento,Obra,Solicitante,JefeObra,JefeArea,Estado,UrlCarpeta,Observaciones");
+    PEDIDOS_CACHE = (data.value||[]).sort(function(a,b){ return (b.FechaSolicitud||'').localeCompare(a.FechaSolicitud||''); });
+    renderTablaSeg();
+  }catch(e){
+    document.getElementById('tablaSegWrap').innerHTML = '<div class="vacio">Error al cargar: '+e.message+'</div>';
+  }
+}
+
+function renderTablaSeg(){
+  var dep = document.getElementById('filtroDep').value;
+  var est = document.getElementById('filtroEstado').value;
+  var txt = document.getElementById('filtroTexto').value.toLowerCase();
+  var lista = PEDIDOS_CACHE.filter(function(p){
+    if(dep && p.Departamento!==dep) return false;
+    if(est && p.Estado!==est) return false;
+    if(txt && !((p.Obra||'').toLowerCase().indexOf(txt)>=0 || (p.JefeObra||'').toLowerCase().indexOf(txt)>=0)) return false;
+    return true;
+  });
+  var wrap = document.getElementById('tablaSegWrap');
+  if(lista.length===0){ wrap.innerHTML = '<div class="vacio">No hay pedidos con estos filtros.</div>'; return; }
+
+  var html = '<table class="segui"><thead><tr>' +
+    '<th>N.º</th><th>Fecha</th><th>Obra</th><th>Departamento</th><th>Jefe de obra</th>' +
+    '<th>Prioridad</th><th>Progreso</th><th>Estado</th><th>Carpeta</th></tr></thead><tbody>';
+  lista.forEach(function(p){
+    var idx = ESTADOS.indexOf(p.Estado);
+    var barra = ESTADOS.map(function(e,i){ return '<i class="'+(i<=idx?'done':'')+'"></i>'; }).join('');
+    html += '<tr>' +
+      '<td><b>'+p.Title+'</b></td>' +
+      '<td>'+(p.FechaSolicitud||'').slice(0,10)+'</td>' +
+      '<td>'+(p.Obra||'')+'</td>' +
+      '<td>'+(p.Departamento||'')+'</td>' +
+      '<td>'+(p.JefeObra||'')+'</td>' +
+      '<td><span class="pill" style="background:'+(p.Prioridad==='Alta'?'#c0392b':p.Prioridad==='Media'?'#C55A11':'#8a97ab')+'">'+p.Prioridad+'</span></td>' +
+      '<td><div class="progreso">'+barra+'</div></td>' +
+      '<td><select class="estado-sel" onchange="cambiarEstado('+p.Id+',this.value)">' +
+        ESTADOS.map(function(e){ return '<option '+(e===p.Estado?'selected':'')+'>'+e+'</option>'; }).join('') +
+      '</select></td>' +
+      '<td>'+(p.UrlCarpeta?('<a class="link-carpeta" target="_blank" href="'+p.UrlCarpeta+'">Abrir ↗</a>'):'—')+'</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+async function cambiarEstado(id, nuevoEstado){
+  try{
+    await spPatch('PedidosCompra', id, { Estado: nuevoEstado });
+    var p = PEDIDOS_CACHE.find(function(x){ return x.Id===id; });
+    if(p) p.Estado = nuevoEstado;
+    renderTablaSeg();
+  }catch(e){
+    alert('No se pudo actualizar el estado: ' + e.message);
+  }
+}
+
+/* ════════════════════ NAVEGACIÓN DE PESTAÑAS ════════════════════ */
+function cambiarVista(v){
+  document.getElementById('viewNueva').classList.toggle('on', v==='nueva');
+  document.getElementById('viewSeguimiento').classList.toggle('on', v==='seguimiento');
+  document.getElementById('tabBtnNueva').classList.toggle('on', v==='nueva');
+  document.getElementById('tabBtnSeg').classList.toggle('on', v==='seguimiento');
+  if(v==='seguimiento' && PEDIDOS_CACHE.length===0) cargarPedidos();
+}
+
+iniciar();
+</script>
+</body>
+</html>
