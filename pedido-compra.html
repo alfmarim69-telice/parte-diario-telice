@@ -69,10 +69,53 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
 .link-carpeta{font-size:11px;color:var(--azul2);text-decoration:none;font-weight:600}
 .vacio{text-align:center;color:var(--text2);padding:40px 0}
 .small{font-size:11px;color:var(--text2)}
+/* ───── Login ───── */
+#loginOverlay{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg)}
+.login-card{background:var(--card);border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.10);width:100%;max-width:400px;overflow:hidden}
+.login-head{background:var(--azul);padding:28px 32px 24px;text-align:center}
+.login-head .logo{font-size:24px;font-weight:700;color:#fff;letter-spacing:.5px}
+.login-head .sub2{font-size:12px;color:rgba(255,255,255,.65);margin-top:4px}
+.login-body{padding:32px}
+.login-error{display:none;background:#fdf2f2;border:1px solid #f5c6c6;color:var(--rojo);border-radius:7px;padding:11px 14px;font-size:13px;margin-bottom:18px;text-align:center}
+.login-error.show{display:block}
+.usuario-activo{font-size:11px;color:rgba(255,255,255,.9);display:flex;align-items:center;gap:10px}
+.usuario-activo button{background:rgba(255,255,255,.15);border:none;color:#fff;padding:5px 10px;border-radius:5px;font-size:11px;cursor:pointer}
+/* modal cambiar contraseña */
+.modal-backdrop{position:fixed;inset:0;background:rgba(20,25,35,.45);display:none;align-items:center;justify-content:center;z-index:50}
+.modal-backdrop.show{display:flex}
+.modal-card{background:var(--card);border-radius:10px;width:100%;max-width:360px;padding:24px;box-shadow:0 8px 30px rgba(0,0,0,.2)}
+.modal-card h3{font-size:15px;color:var(--azul);margin-bottom:16px}
+.modal-card .field{margin-bottom:14px}
+.modal-acciones{display:flex;gap:10px;justify-content:flex-end;margin-top:6px}
 </style>
 <script src="msal-browser.min.js"></script>
 </head>
 <body>
+
+<!-- ══════════════ LOGIN ══════════════ -->
+<div id="loginOverlay">
+  <div class="login-card">
+    <div class="login-head">
+      <div class="logo">Pedido de Compra</div>
+      <div class="sub2">TELICE · Acceso de usuario</div>
+    </div>
+    <div class="login-body">
+      <div class="login-error" id="loginError">Usuario o contraseña incorrectos.</div>
+      <div class="field" style="margin-bottom:16px">
+        <label>Usuario</label>
+        <input type="text" id="loginUsuario" autocomplete="username">
+      </div>
+      <div class="field" style="margin-bottom:20px">
+        <label>Contraseña</label>
+        <input type="password" id="loginPassword" autocomplete="current-password">
+      </div>
+      <button class="btn prim" id="btnLogin" style="width:100%" onclick="hacerLogin()">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ APP (oculta hasta iniciar sesión) ══════════════ -->
+<div id="appRoot" style="display:none">
 
 <header>
   <div>
@@ -82,6 +125,11 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
   <div class="tabs">
     <button id="tabBtnNueva" class="on" onclick="cambiarVista('nueva')">Nueva solicitud</button>
     <button id="tabBtnSeg" onclick="cambiarVista('seguimiento')">Seguimiento de pedidos</button>
+  </div>
+  <div class="usuario-activo">
+    <span id="usuarioActivo"></span>
+    <button onclick="abrirCambiarPassword()">Cambiar contraseña</button>
+    <button onclick="cerrarSesion()">Cerrar sesión</button>
   </div>
 </header>
 
@@ -118,29 +166,20 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
       </div>
       <div class="grid" style="margin-top:14px">
         <div class="field">
-          <label>Departamento *</label>
-          <select id="fDepartamento" onchange="onDepartamentoChange()">
-            <option value="">Selecciona…</option>
-            <option>Catenaria</option>
-            <option>Instalaciones</option>
-            <option>Subestaciones</option>
-            <option>General</option>
-          </select>
+          <label>Solicitante</label>
+          <input type="text" id="fSolicitante" readonly>
         </div>
         <div class="field">
-          <label>Solicitante *</label>
-          <input type="text" id="fSolicitante" list="dlNombres" placeholder="Tu nombre">
-          <datalist id="dlNombres"></datalist>
-        </div>
-        <div class="field">
-          <label>Jefe de obra *</label>
-          <select id="fJefeObra" onchange="onJefeObraChange()">
-            <option value="">Selecciona departamento primero…</option>
-          </select>
+          <label>Departamento</label>
+          <input type="text" id="fDepartamento" readonly placeholder="Autocompletado">
         </div>
         <div class="field">
           <label>Jefe de área</label>
           <input type="text" id="fJefeArea" readonly placeholder="Autocompletado">
+        </div>
+        <div class="field">
+          <label>Rol del solicitante</label>
+          <input type="text" id="fRol" readonly placeholder="Autocompletado">
         </div>
       </div>
       <div class="grid" style="margin-top:14px">
@@ -261,6 +300,31 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
     </div>
   </div>
 
+</div>
+</div>
+
+<!-- ══════════════ MODAL: CAMBIAR CONTRASEÑA ══════════════ -->
+<div class="modal-backdrop" id="modalPassword">
+  <div class="modal-card">
+    <h3>Cambiar contraseña</h3>
+    <div class="banner" id="pwBanner" style="margin-bottom:14px"></div>
+    <div class="field">
+      <label>Contraseña actual</label>
+      <input type="password" id="pwActual">
+    </div>
+    <div class="field">
+      <label>Contraseña nueva</label>
+      <input type="password" id="pwNueva">
+    </div>
+    <div class="field">
+      <label>Repetir contraseña nueva</label>
+      <input type="password" id="pwRepetir">
+    </div>
+    <div class="modal-acciones">
+      <button class="btn sec" onclick="cerrarModalPassword()">Cancelar</button>
+      <button class="btn prim" id="btnGuardarPw" onclick="guardarNuevaPassword()">Guardar</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -401,18 +465,72 @@ async function sendMailSP(to, subject, bodyHtml){
   return true;
 }
 
-/* ════════════════════ ESTADO GENERAL DE CONEXIÓN ════════════════════ */
-var JEFES_OBRA = []; // {Nombre, Departamento, Correo, ResponsableArea, EsResponsable}
+/* ════════════════════ SESIÓN (usuario/contraseña propios de esta app, contra M_JefesObra) ════════════════════ */
+// Lista separada de la de "Usuarios" del app de partes: solo las personas dadas de alta
+// en M_JefesObra (jefes de obra, jefes de área, director, jefe de compras) pueden entrar
+// aquí. Así el personal de partes (jefes de equipo, etc.) no tiene acceso a pedidos.
+var SESSION_KEY = 'pc_usuario';
+var SESION = null;
+var JEFES_OBRA = []; // {Nombre, Departamento, Correo, ResponsableArea, EsResponsable, Cargo}
 
 function setConn(msg){ document.getElementById('estadoConn').textContent = msg; }
 
-async function iniciar(){
+function getSesion(){
+  var raw = sessionStorage.getItem(SESSION_KEY);
+  if(!raw) return null;
+  try{ return JSON.parse(raw); }catch(e){ return null; }
+}
+function guardarSesion(j){
+  SESION = { id:j.Id, nombre:j.Title, departamento:j.Departamento, cargo:j.Cargo, ts:Date.now() };
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify(SESION));
+}
+function cerrarSesion(){
+  sessionStorage.removeItem(SESSION_KEY);
+  location.reload();
+}
+function mostrarLoginError(msg){
+  var el = document.getElementById('loginError');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+
+async function hacerLogin(){
+  var usuario = document.getElementById('loginUsuario').value.trim();
+  var password = document.getElementById('loginPassword').value;
+  var btn = document.getElementById('btnLogin');
+  document.getElementById('loginError').classList.remove('show');
+  if(!usuario || !password){ mostrarLoginError('Introduce usuario y contraseña.'); return; }
+  btn.disabled = true; btn.textContent = 'Comprobando…';
+  try{
+    await ensureReady();
+    if(!currentAccount()) await login();
+    var data = await spGet("/lists/GetByTitle('M_JefesObra')/items?$select=Id,Title,Departamento,Correo,ResponsableArea,EsResponsable,Cargo,Password&$top=500");
+    var items = data.value || [];
+    var match = items.find(function(it){
+      return (it.Title||'').trim().toLowerCase() === usuario.toLowerCase() && (it.Password||'') === password;
+    });
+    if(!match){ mostrarLoginError('Usuario o contraseña incorrectos.'); return; }
+    guardarSesion(match);
+    await arrancarApp();
+  }catch(e){
+    mostrarLoginError('Error al conectar: ' + e.message);
+    console.error(e);
+  }finally{
+    btn.disabled = false; btn.textContent = 'Entrar';
+  }
+}
+
+async function arrancarApp(){
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('appRoot').style.display = 'block';
+  document.getElementById('usuarioActivo').textContent = SESION.nombre + (SESION.cargo?(' · '+SESION.cargo):'');
   document.getElementById('fFechaSolicitud').value = new Date().toISOString().slice(0,10);
   try{
     await ensureReady();
-    if(!currentAccount()){ setConn('Iniciando sesión…'); await login(); }
+    if(!currentAccount()) await login();
     setConn('Conectado · ' + (currentAccount().username || currentAccount().name || ''));
     await cargarJefesObra();
+    bloquearSolicitante();
     llenarFiltroEstado();
   }catch(e){
     setConn('Sin conexión (' + e.message + ')');
@@ -421,26 +539,71 @@ async function iniciar(){
 }
 
 async function cargarJefesObra(){
-  var data = await spGet("/lists/GetByTitle('M_JefesObra')/items?$select=Title,Departamento,Correo,ResponsableArea,EsResponsable&$top=500");
+  var data = await spGet("/lists/GetByTitle('M_JefesObra')/items?$select=Title,Departamento,Correo,ResponsableArea,EsResponsable,Cargo&$top=500");
   JEFES_OBRA = (data.value||[]).map(function(x){
-    return { Nombre:x.Title, Departamento:x.Departamento, Correo:x.Correo, ResponsableArea:x.ResponsableArea, EsResponsable:!!x.EsResponsable };
+    return { Nombre:x.Title, Departamento:x.Departamento, Correo:x.Correo, ResponsableArea:x.ResponsableArea, EsResponsable:!!x.EsResponsable, Cargo:x.Cargo||'' };
   });
-  var dl = document.getElementById('dlNombres');
-  dl.innerHTML = JEFES_OBRA.map(function(j){ return '<option value="'+j.Nombre+'">'; }).join('');
 }
 
-function onDepartamentoChange(){
-  var dep = document.getElementById('fDepartamento').value;
-  var sel = document.getElementById('fJefeObra');
-  var lista = JEFES_OBRA.filter(function(j){ return j.Departamento===dep; });
-  sel.innerHTML = '<option value="">Selecciona…</option>' +
-    lista.map(function(j){ return '<option value="'+j.Nombre+'">'+j.Nombre+'</option>'; }).join('');
-  document.getElementById('fJefeArea').value = '';
+// Bloquea el campo Solicitante a la persona autenticada — no es editable ni seleccionable,
+// para que nadie pueda enviar un pedido en nombre de otro.
+function bloquearSolicitante(){
+  var j = JEFES_OBRA.find(function(x){ return x.Nombre.trim().toLowerCase() === SESION.nombre.trim().toLowerCase(); });
+  if(!j){
+    showBanner('err', 'Tu usuario ('+SESION.nombre+') no aparece en la ficha de jefes de obra (M_JefesObra). Contacta con administración antes de poder enviar pedidos.');
+    document.getElementById('btnEnviar').disabled = true;
+    return;
+  }
+  document.getElementById('fSolicitante').value = j.Nombre;
+  document.getElementById('fDepartamento').value = j.Departamento || '';
+  document.getElementById('fJefeArea').value = j.ResponsableArea || '';
+  document.getElementById('fRol').value = j.Cargo || '';
 }
-function onJefeObraChange(){
-  var nombre = document.getElementById('fJefeObra').value;
-  var j = JEFES_OBRA.find(function(x){ return x.Nombre===nombre; });
-  document.getElementById('fJefeArea').value = j ? j.ResponsableArea : '';
+
+/* ════════════════════ CAMBIAR CONTRASEÑA ════════════════════ */
+function abrirCambiarPassword(){
+  document.getElementById('pwActual').value = '';
+  document.getElementById('pwNueva').value = '';
+  document.getElementById('pwRepetir').value = '';
+  var b = document.getElementById('pwBanner');
+  b.className = 'banner'; b.textContent = '';
+  document.getElementById('modalPassword').classList.add('show');
+}
+function cerrarModalPassword(){
+  document.getElementById('modalPassword').classList.remove('show');
+}
+function pwBannerMsg(tipo, msg){
+  var b = document.getElementById('pwBanner');
+  b.className = 'banner show ' + tipo;
+  b.textContent = msg;
+}
+async function guardarNuevaPassword(){
+  var actual = document.getElementById('pwActual').value;
+  var nueva = document.getElementById('pwNueva').value;
+  var repetir = document.getElementById('pwRepetir').value;
+  if(!actual || !nueva || !repetir){ pwBannerMsg('err', 'Rellena los tres campos.'); return; }
+  if(nueva.length < 4){ pwBannerMsg('err', 'La contraseña nueva debe tener al menos 4 caracteres.'); return; }
+  if(nueva !== repetir){ pwBannerMsg('err', 'La nueva contraseña y su repetición no coinciden.'); return; }
+
+  var btn = document.getElementById('btnGuardarPw');
+  btn.disabled = true;
+  try{
+    // Releer el registro para confirmar la contraseña actual y obtener su Id si faltara
+    var data = await spGet("/lists/GetByTitle('M_JefesObra')/items?$select=Id,Title,Password&$top=500");
+    var item = (data.value||[]).find(function(x){ return (x.Title||'').trim().toLowerCase() === SESION.nombre.trim().toLowerCase(); });
+    if(!item){ pwBannerMsg('err', 'No se encontró tu usuario en M_JefesObra.'); return; }
+    if((item.Password||'') !== actual){ pwBannerMsg('err', 'La contraseña actual no es correcta.'); return; }
+
+    await spPatch('M_JefesObra', item.Id, { Password: nueva });
+    SESION.id = item.Id;
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(SESION));
+    pwBannerMsg('ok', 'Contraseña actualizada correctamente.');
+    setTimeout(cerrarModalPassword, 1400);
+  }catch(e){
+    pwBannerMsg('err', 'Error al actualizar la contraseña: ' + e.message);
+  }finally{
+    btn.disabled = false;
+  }
 }
 
 /* ════════════════════ MATERIALES: FILAS DINÁMICAS ════════════════════ */
@@ -497,15 +660,18 @@ async function generarNumSolicitud(){
 }
 
 async function enviarSolicitud(){
+  var solicitante = document.getElementById('fSolicitante').value.trim();
   var dep = document.getElementById('fDepartamento').value;
-  var jefeObraNombre = document.getElementById('fJefeObra').value;
   var obra = document.getElementById('fObra').value.trim();
   var fechaEntrega = document.getElementById('fFechaEntrega').value;
-  var solicitante = document.getElementById('fSolicitante').value.trim();
   var materiales = leerMateriales();
 
-  if(!dep || !jefeObraNombre || !obra || !fechaEntrega || !solicitante){
-    showBanner('err', 'Faltan campos obligatorios: Departamento, Solicitante, Jefe de obra, Obra y Fecha de entrega.');
+  if(!SESION || solicitante.toLowerCase() !== SESION.nombre.trim().toLowerCase()){
+    showBanner('err', 'No se pudo verificar tu identidad. Vuelve a iniciar sesión antes de enviar el pedido.');
+    return;
+  }
+  if(!solicitante || !dep || !obra || !fechaEntrega){
+    showBanner('err', 'Faltan campos obligatorios: Solicitante, Obra y Fecha de entrega.');
     return;
   }
   if(materiales.length===0){
@@ -521,12 +687,12 @@ async function enviarSolicitud(){
     await ensureReady();
     if(!currentAccount()) await login();
 
-    var jefeObra = JEFES_OBRA.find(function(x){ return x.Nombre===jefeObraNombre; }) || {};
+    var jefeObra = JEFES_OBRA.find(function(x){ return x.Nombre===solicitante; }) || {};
     var nSolicitud = await generarNumSolicitud();
     var fechaSolicitud = document.getElementById('fFechaSolicitud').value;
 
-    // 1) Carpeta: Pedidos/Departamento/JefeObra/Obra
-    var relPath = ['Pedidos', safeSeg(dep), safeSeg(jefeObraNombre), safeSeg(obra)].join('/');
+    // 1) Carpeta: Pedidos/Departamento/Solicitante/Obra
+    var relPath = ['Pedidos', safeSeg(dep), safeSeg(solicitante), safeSeg(obra)].join('/');
     var folderServerRel = null;
     try{ folderServerRel = await ensureFolderPath(relPath); }
     catch(e){ console.warn('No se pudo crear la carpeta:', e.message); }
@@ -544,7 +710,7 @@ async function enviarSolicitud(){
       CentroCoste: document.getElementById('fCentroCoste').value.trim(),
       NumeroAlmacen: document.getElementById('fAlmacen').value.trim(),
       Solicitante: solicitante,
-      JefeObra: jefeObraNombre,
+      JefeObra: solicitante,
       JefeArea: jefeObra.ResponsableArea || '',
       DireccionEntrega: document.getElementById('fDireccion').value.trim(),
       PersonaContacto: document.getElementById('fContacto').value.trim(),
@@ -577,7 +743,7 @@ async function enviarSolicitud(){
     // 4) Documento resumen (texto plano) en la carpeta
     if(folderServerRel){
       try{
-        var resumen = buildResumenTexto(nSolicitud, {dep:dep, obra:obra, jefeObra:jefeObraNombre, jefeArea:jefeObra.ResponsableArea,
+        var resumen = buildResumenTexto(nSolicitud, {dep:dep, obra:obra, jefeObra:solicitante, jefeArea:jefeObra.ResponsableArea,
           solicitante:solicitante, fechaSolicitud:fechaSolicitud, fechaEntrega:fechaEntrega,
           prioridad:document.getElementById('fPrioridad').value}, materiales);
         await uploadFileToFolder(folderServerRel, nSolicitud + '.txt', resumen);
@@ -586,14 +752,14 @@ async function enviarSolicitud(){
 
     // 5) Email automático a jefe de área + compras
     var destinatarios = CORREOS_COMPRAS.slice();
-    if(jefeObra.ResponsableArea){
+    if(jefeObra.ResponsableArea && jefeObra.ResponsableArea!==solicitante){
       var jArea = JEFES_OBRA.find(function(x){ return x.Nombre===jefeObra.ResponsableArea; });
       if(jArea && jArea.Correo) destinatarios.push(jArea.Correo);
     }
     var mailOk = true, mailErr = '';
     try{
       var cuerpo = '<p>Nueva solicitud de pedido <b>'+nSolicitud+'</b> — Obra '+obra+' ('+dep+').</p>' +
-        '<p>Jefe de obra: '+jefeObraNombre+'<br>Solicitante: '+solicitante+'<br>Prioridad: '+document.getElementById('fPrioridad').value+
+        '<p>Solicitante ('+document.getElementById('fRol').value+'): '+solicitante+'<br>Prioridad: '+document.getElementById('fPrioridad').value+
         '<br>Fecha de entrega solicitada: '+fechaEntrega+'</p>' +
         (folderWebUrl ? '<p>Carpeta: <a href="'+folderWebUrl+'">'+folderWebUrl+'</a></p>' : '');
       await sendMailSP(destinatarios, 'Nueva solicitud de pedido ' + nSolicitud + ' - ' + obra, cuerpo);
@@ -717,7 +883,15 @@ function cambiarVista(v){
   if(v==='seguimiento' && PEDIDOS_CACHE.length===0) cargarPedidos();
 }
 
-iniciar();
+/* ════════════════════ ARRANQUE ════════════════════ */
+document.addEventListener('keydown', function(e){
+  if(e.key==='Enter' && document.getElementById('loginOverlay').style.display!=='none') hacerLogin();
+});
+
+(function(){
+  var s = getSesion();
+  if(s){ SESION = s; arrancarApp(); }
+})();
 </script>
 </body>
 </html>
