@@ -900,29 +900,14 @@ async function enviarSolicitud(){
       }catch(e){ console.warn('No se pudo generar el RFQ:', e.message); }
     }
 
-    // 5) Email automático a jefe de área + compras
-    var destinatarios = CORREOS_COMPRAS.slice();
-    if(jefeObra.ResponsableArea && jefeObra.ResponsableArea!==solicitante){
-      var jArea = JEFES_OBRA.find(function(x){ return x.Nombre===jefeObra.ResponsableArea; });
-      if(jArea && jArea.Correo) destinatarios.push(jArea.Correo);
-    }
-    var mailOk = true, mailErr = '';
+    // 5) Guardar enlace al RFQ y redacción para proveedores en el propio pedido
+    //    (el envío de correo lo hace un flujo de Power Automate — la API SendEmail de
+    //    SharePoint que se usaba antes fue retirada por Microsoft y ya no funciona)
     try{
-      var cuerpo = '<p>Nueva solicitud de pedido <b>'+nSolicitud+'</b> — Obra '+obra+' ('+dep+').</p>' +
-        '<p>Solicitante ('+document.getElementById('fRol').value+'): '+solicitante+'<br>Prioridad: '+document.getElementById('fPrioridad').value+
-        '<br>Fecha de entrega solicitada: '+fechaEntrega+'</p>' +
-        (folderWebUrl ? '<p>Carpeta del pedido: <a href="'+folderWebUrl+'">'+folderWebUrl+'</a></p>' : '') +
-        (rfqWebUrl ? '<p>RFQ para proveedores (Word): <a href="'+rfqWebUrl+'">'+rfqWebUrl+'</a></p>' : '') +
-        (redaccionProveedores ? '<p><b>Borrador de correo para proveedores</b> (copiar y pegar, adjuntando el RFQ):</p><pre style="white-space:pre-wrap;font-family:Segoe UI,sans-serif;background:#f4f5f7;padding:10px;border-radius:6px">'+redaccionProveedores.replace(/</g,'&lt;')+'</pre>' : '');
-      await sendMailSP(destinatarios, 'Nueva solicitud de pedido ' + nSolicitud + ' - ' + obra, cuerpo);
-    }catch(e){ mailOk = false; mailErr = e.message; }
+      await spPatch('PedidosCompra', cab.Id, { UrlRFQ: rfqWebUrl, RedaccionProveedores: redaccionProveedores });
+    }catch(e){ console.warn('No se pudo guardar UrlRFQ/RedaccionProveedores:', e.message); }
 
-    if(mailOk){
-      showBanner('ok', 'Solicitud ' + nSolicitud + ' enviada correctamente. Correo enviado a: ' + destinatarios.join(', '));
-    }else{
-      showBanner('warn', 'Solicitud ' + nSolicitud + ' guardada, pero el envío de correo automático falló (' + mailErr +
-        '). Puede que el correo saliente de SharePoint no esté configurado en el tenant — avisa a compras manualmente por esta vez.');
-    }
+    showBanner('ok', 'Solicitud ' + nSolicitud + ' enviada y guardada correctamente. El aviso a compras lo envía automáticamente el flujo de Power Automate en cuanto detecta el pedido nuevo (no instantáneo).');
     document.getElementById('estadoEnvio').textContent = '';
     setTimeout(function(){ location.reload(); }, 4500);
 
