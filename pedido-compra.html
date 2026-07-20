@@ -841,6 +841,11 @@ async function enviarSolicitud(){
       PlazoEntrega: document.getElementById('fPlazo').value || fechaEntrega,
       Estado: 'Enviado',
       UrlCarpeta: folderWebUrl,
+      CorreoJefeArea: (function(){
+        if(!jefeObra.ResponsableArea || jefeObra.ResponsableArea===solicitante) return '';
+        var jArea = JEFES_OBRA.find(function(x){ return x.Nombre===jefeObra.ResponsableArea; });
+        return (jArea && jArea.Correo) ? jArea.Correo : '';
+      })(),
       Observaciones: document.getElementById('fObservaciones').value.trim()
     });
 
