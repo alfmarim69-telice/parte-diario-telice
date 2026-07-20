@@ -196,23 +196,34 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
           <label>Número de almacén</label>
           <input type="text" id="fAlmacen">
         </div>
+        <div class="field">
+        </div>
+      </div>
+      <div class="grid" style="margin-top:14px">
+        <div class="field">
+          <label>Venta presupuesto (€)</label>
+          <input type="number" id="fVentaPresupuesto" min="0" step="0.01" placeholder="Total del pedido">
+        </div>
+        <div class="field">
+          <label>Coste planificado (€)</label>
+          <input type="number" id="fCostePlanificado" min="0" step="0.01" placeholder="Total del pedido">
+        </div>
       </div>
     </div>
 
     <div class="card">
       <h2>Materiales solicitados</h2>
+      <div style="overflow-x:auto">
       <table class="mat" id="tablaMat">
         <thead>
           <tr>
-            <th style="width:14%">Descripción</th>
-            <th style="width:11%">Medidas / Especificación</th>
-            <th style="width:5%">Cantidad</th>
-            <th style="width:4%">Ud</th>
-            <th style="width:6%">PEC</th>
-            <th style="width:7%">Venta presup. (€)</th>
-            <th style="width:7%">Coste plan. (€)</th>
-            <th style="width:14%">Características específicas</th>
-            <th style="width:7%">Ref. pedido anterior</th>
+            <th style="width:16%">Descripción</th>
+            <th style="width:14%">Medidas / Especificación</th>
+            <th style="width:6%">Cantidad</th>
+            <th style="width:6%">Ud</th>
+            <th style="width:8%">PEC</th>
+            <th style="width:18%">Características específicas</th>
+            <th style="width:8%">Ref. pedido anterior</th>
             <th style="width:5%">Ficha técnica</th>
             <th style="width:5%">Doc. calidad</th>
             <th style="width:5%">Opcional</th>
@@ -221,6 +232,7 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
         </thead>
         <tbody id="filasMat"></tbody>
       </table>
+      </div>
       <div class="fila-acciones">
         <button class="btn sec" onclick="addFilaMat()">+ Añadir material</button>
       </div>
@@ -622,8 +634,6 @@ function addFilaMat(){
     '<td><input type="number" data-f="cant" min="0" step="0.01"></td>' +
     '<td><input type="text" data-f="ud"></td>' +
     '<td><input type="text" data-f="pec"></td>' +
-    '<td><input type="number" data-f="venta" min="0" step="0.01" placeholder="0,00"></td>' +
-    '<td><input type="number" data-f="coste" min="0" step="0.01" placeholder="0,00"></td>' +
     '<td><input type="text" data-f="caract"></td>' +
     '<td><input type="text" data-f="refant"></td>' +
     '<td><div class="chk"><input type="checkbox" data-f="ficha"></div></td>' +
@@ -643,7 +653,6 @@ function leerMateriales(){
     function v(f){ var el = tr.querySelector('[data-f="'+f+'"]'); return el ? (el.type==='checkbox'?el.checked:el.value.trim()) : ''; }
     if(!v('desc') && !v('cant')) return;
     out.push({ desc:v('desc'), medidas:v('medidas'), cant:v('cant'), ud:v('ud'), pec:v('pec'),
-               venta:v('venta'), coste:v('coste'),
                caract:v('caract'), refant:v('refant'), ficha:v('ficha'), calidad:v('calidad'), opcional:v('opcional') });
   });
   return out;
@@ -818,6 +827,8 @@ async function enviarSolicitud(){
       Obra: obra,
       CentroCoste: document.getElementById('fCentroCoste').value.trim(),
       NumeroAlmacen: document.getElementById('fAlmacen').value.trim(),
+      VentaPresupuesto: document.getElementById('fVentaPresupuesto').value ? Number(document.getElementById('fVentaPresupuesto').value) : null,
+      CostePlanificado: document.getElementById('fCostePlanificado').value ? Number(document.getElementById('fCostePlanificado').value) : null,
       Solicitante: solicitante,
       JefeObra: solicitante,
       JefeArea: jefeObra.ResponsableArea || '',
@@ -842,8 +853,6 @@ async function enviarSolicitud(){
         Cantidad: m.cant ? Number(m.cant) : null,
         Unidad: m.ud,
         PEC: m.pec,
-        VentaPresupuesto: m.venta ? Number(m.venta) : null,
-        CostePlanificado: m.coste ? Number(m.coste) : null,
         CaracteristicasEspecificas: (m.opcional?'[OPCIONAL] ':'') + m.caract,
         RefPedidoAnterior: m.refant,
         FichaTecnica: !!m.ficha,
@@ -856,7 +865,8 @@ async function enviarSolicitud(){
       try{
         var resumen = buildResumenTexto(nSolicitud, {dep:dep, obra:obra, jefeObra:solicitante, jefeArea:jefeObra.ResponsableArea,
           solicitante:solicitante, fechaSolicitud:fechaSolicitud, fechaEntrega:fechaEntrega,
-          prioridad:document.getElementById('fPrioridad').value}, materiales);
+          prioridad:document.getElementById('fPrioridad').value,
+          venta:document.getElementById('fVentaPresupuesto').value, coste:document.getElementById('fCostePlanificado').value}, materiales);
         await uploadFileToFolder(folderServerRel, nSolicitud + '.txt', resumen);
       }catch(e){ console.warn('No se pudo guardar el documento resumen:', e.message); }
     }
@@ -933,13 +943,13 @@ function buildResumenTexto(n, cab, materiales){
   l.push('Solicitante: ' + cab.solicitante);
   l.push('Fecha solicitud: ' + cab.fechaSolicitud + '   Fecha entrega: ' + cab.fechaEntrega);
   l.push('Prioridad: ' + cab.prioridad);
+  if(cab.venta || cab.coste) l.push('[Interno] Venta presupuesto: ' + (cab.venta||'—') + ' €   Coste planificado: ' + (cab.coste||'—') + ' €');
   l.push('');
   l.push('MATERIALES SOLICITADOS');
   l.push('-'.repeat(50));
   materiales.forEach(function(m, i){
     l.push((i+1) + '. ' + (m.opcional?'[OPCIONAL] ':'') + m.desc + '  |  ' + m.medidas);
     l.push('   Cantidad: ' + m.cant + ' ' + m.ud + (m.pec?('   PEC: '+m.pec):''));
-    if(m.venta || m.coste) l.push('   [Interno] Venta presupuesto: ' + (m.venta||'—') + ' €   Coste planificado: ' + (m.coste||'—') + ' €');
     if(m.caract) l.push('   ' + m.caract);
     if(m.refant) l.push('   Ref. pedido anterior: ' + m.refant);
   });
