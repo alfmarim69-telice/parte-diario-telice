@@ -660,17 +660,19 @@ function leerMateriales(){
 addFilaMat(); // fila inicial
 
 /* ════════════════════ GENERADOR DE RFQ (Word) ════════════════════ */
-const RFQ_BORDER = {
-  top:{style:docx.BorderStyle.SINGLE,size:2,color:"AAAAAA"}, bottom:{style:docx.BorderStyle.SINGLE,size:2,color:"AAAAAA"},
-  left:{style:docx.BorderStyle.SINGLE,size:2,color:"AAAAAA"}, right:{style:docx.BorderStyle.SINGLE,size:2,color:"AAAAAA"}
-};
+function rfqBorder() {
+  return {
+    top:{style:docx.BorderStyle.SINGLE,size:2,color:"AAAAAA"}, bottom:{style:docx.BorderStyle.SINGLE,size:2,color:"AAAAAA"},
+    left:{style:docx.BorderStyle.SINGLE,size:2,color:"AAAAAA"}, right:{style:docx.BorderStyle.SINGLE,size:2,color:"AAAAAA"}
+  };
+}
 const RFQ_AZUL = "1F3864";
 
 function rfqCelda(texto, {header=false, width=2500, bold=false}={}) {
   return new docx.TableCell({
     width:{size:width, type:docx.WidthType.DXA}, verticalAlign: docx.VerticalAlign.CENTER,
     shading: header ? {type:docx.ShadingType.CLEAR, fill:RFQ_AZUL} : undefined,
-    borders: RFQ_BORDER, margins:{top:80,bottom:80,left:100,right:100},
+    borders: rfqBorder(), margins:{top:80,bottom:80,left:100,right:100},
     children:[new docx.Paragraph({children:[new docx.TextRun({text:String(texto??""), bold:header||bold, color:header?"FFFFFF":undefined, size:20})]})]
   });
 }
