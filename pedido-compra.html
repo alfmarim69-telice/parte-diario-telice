@@ -89,6 +89,7 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
 .modal-acciones{display:flex;gap:10px;justify-content:flex-end;margin-top:6px}
 </style>
 <script src="msal-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5/build/index.umd.min.js"></script>
 </head>
 <body>
 
@@ -203,13 +204,15 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
       <table class="mat" id="tablaMat">
         <thead>
           <tr>
-            <th style="width:16%">Descripción</th>
-            <th style="width:14%">Medidas / Especificación</th>
-            <th style="width:6%">Cantidad</th>
-            <th style="width:6%">Ud</th>
-            <th style="width:8%">PEC</th>
-            <th style="width:18%">Características específicas</th>
-            <th style="width:8%">Ref. pedido anterior</th>
+            <th style="width:14%">Descripción</th>
+            <th style="width:11%">Medidas / Especificación</th>
+            <th style="width:5%">Cantidad</th>
+            <th style="width:4%">Ud</th>
+            <th style="width:6%">PEC</th>
+            <th style="width:7%">Venta presup. (€)</th>
+            <th style="width:7%">Coste plan. (€)</th>
+            <th style="width:14%">Características específicas</th>
+            <th style="width:7%">Ref. pedido anterior</th>
             <th style="width:5%">Ficha técnica</th>
             <th style="width:5%">Doc. calidad</th>
             <th style="width:5%">Opcional</th>
@@ -619,6 +622,8 @@ function addFilaMat(){
     '<td><input type="number" data-f="cant" min="0" step="0.01"></td>' +
     '<td><input type="text" data-f="ud"></td>' +
     '<td><input type="text" data-f="pec"></td>' +
+    '<td><input type="number" data-f="venta" min="0" step="0.01" placeholder="0,00"></td>' +
+    '<td><input type="number" data-f="coste" min="0" step="0.01" placeholder="0,00"></td>' +
     '<td><input type="text" data-f="caract"></td>' +
     '<td><input type="text" data-f="refant"></td>' +
     '<td><div class="chk"><input type="checkbox" data-f="ficha"></div></td>' +
@@ -638,11 +643,114 @@ function leerMateriales(){
     function v(f){ var el = tr.querySelector('[data-f="'+f+'"]'); return el ? (el.type==='checkbox'?el.checked:el.value.trim()) : ''; }
     if(!v('desc') && !v('cant')) return;
     out.push({ desc:v('desc'), medidas:v('medidas'), cant:v('cant'), ud:v('ud'), pec:v('pec'),
+               venta:v('venta'), coste:v('coste'),
                caract:v('caract'), refant:v('refant'), ficha:v('ficha'), calidad:v('calidad'), opcional:v('opcional') });
   });
   return out;
 }
 addFilaMat(); // fila inicial
+
+/* ════════════════════ GENERADOR DE RFQ (Word) ════════════════════ */
+const RFQ_BORDER = {
+  top:{style:docx.BorderStyle.SINGLE,size:2,color:"AAAAAA"}, bottom:{style:docx.BorderStyle.SINGLE,size:2,color:"AAAAAA"},
+  left:{style:docx.BorderStyle.SINGLE,size:2,color:"AAAAAA"}, right:{style:docx.BorderStyle.SINGLE,size:2,color:"AAAAAA"}
+};
+const RFQ_AZUL = "1F3864";
+
+function rfqCelda(texto, {header=false, width=2500, bold=false}={}) {
+  return new docx.TableCell({
+    width:{size:width, type:docx.WidthType.DXA}, verticalAlign: docx.VerticalAlign.CENTER,
+    shading: header ? {type:docx.ShadingType.CLEAR, fill:RFQ_AZUL} : undefined,
+    borders: RFQ_BORDER, margins:{top:80,bottom:80,left:100,right:100},
+    children:[new docx.Paragraph({children:[new docx.TextRun({text:String(texto??""), bold:header||bold, color:header?"FFFFFF":undefined, size:20})]})]
+  });
+}
+function rfqTitulo(texto) {
+  return new docx.Paragraph({ heading: docx.HeadingLevel.HEADING_2, spacing:{before:300,after:150},
+    children:[new docx.TextRun({text:texto, bold:true, color:RFQ_AZUL, size:24})] });
+}
+function rfqParrafo(texto) {
+  return new docx.Paragraph({ spacing:{after:120}, children:[new docx.TextRun({text:texto, size:20})] });
+}
+function rfqBullet(texto) {
+  return new docx.Paragraph({ bullet:{level:0}, spacing:{after:60}, children:[new docx.TextRun({text:texto, size:20})] });
+}
+
+function generarDocumentoRFQ(cab, materiales) {
+  const children = [];
+  children.push(
+    new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing:{after:60}, children:[new docx.TextRun({text:"TELICE, S.A.", bold:true, size:22})] }),
+    new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing:{after:60}, children:[new docx.TextRun({text:"PETICIÓN DE OFERTA (RFQ)", bold:true, size:32, color:RFQ_AZUL})] }),
+    new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing:{after:240}, children:[new docx.TextRun({text:cab.tituloRfq, italics:true, size:22})] })
+  );
+  children.push(
+    new docx.Table({ width:{size:9000,type:docx.WidthType.DXA}, columnWidths:[2200,2300,2200,2300], rows:[
+      new docx.TableRow({children:[rfqCelda("Proyecto",{header:true}), rfqCelda(cab.proyecto), rfqCelda("Ref. RFQ",{header:true}), rfqCelda(cab.refRfq)]}),
+      new docx.TableRow({children:[rfqCelda("Solicitante",{header:true}), rfqCelda(cab.solicitante), rfqCelda("Fecha emisión",{header:true}), rfqCelda(cab.fechaEmision)]}),
+      new docx.TableRow({children:[rfqCelda("Contacto",{header:true}), rfqCelda(cab.contacto), rfqCelda("Plazo de oferta",{header:true}), rfqCelda(cab.plazoOferta)]}),
+    ]}),
+    new docx.Paragraph({text:"", spacing:{after:200}})
+  );
+
+  children.push(rfqTitulo("1. Objeto"));
+  children.push(rfqParrafo(cab.objeto));
+
+  children.push(rfqTitulo("2. Especificación técnica"));
+  materiales.forEach(m => {
+    const linea = m.desc + (m.medidas ? " — " + m.medidas : "") + (m.caract ? " (" + m.caract + ")" : "");
+    children.push(rfqBullet(linea));
+  });
+
+  children.push(rfqTitulo("3. Medición prevista"));
+  const filas = [ new docx.TableRow({children:[
+    rfqCelda("Descripción",{header:true,width:4500}), rfqCelda("Cantidad",{header:true,width:1500}),
+    rfqCelda("Ud.",{header:true,width:1000}), rfqCelda("Observaciones",{header:true,width:2000})
+  ]}) ];
+  materiales.forEach(m => {
+    filas.push(new docx.TableRow({children:[
+      rfqCelda(m.desc,{width:4500}), rfqCelda(m.cant,{width:1500}), rfqCelda(m.ud,{width:1000}), rfqCelda(m.refant||"",{width:2000})
+    ]}));
+  });
+  children.push(new docx.Table({width:{size:9000,type:docx.WidthType.DXA}, columnWidths:[4500,1500,1000,2000], rows:filas}));
+  children.push(new docx.Paragraph({text:"", spacing:{after:200}}));
+
+  children.push(rfqTitulo("4. Condiciones y documentación a incluir en la oferta"));
+  const condiciones = [
+    ["Precio","Precio unitario desglosado, portes y posibles suplementos."],
+    ["Origen","Planta/almacén de suministro previsto y distancia/tiempo hasta obra."],
+    ["Capacidad","Capacidad de producción/suministro y disponibilidad para picos de demanda."],
+    ["Calidad","Certificaciones y marcado CE aplicables, conforme a normativa vigente."],
+    ["Plazo de oferta","Plazo de validez de la oferta económica."],
+    ["Pago","Condiciones y plazo de pago propuestos."],
+    ["Calendario","Disponibilidad de suministro según necesidades de obra (incluidos sábados/festivos si aplica)."]
+  ];
+  const filasCond = [ new docx.TableRow({children:[rfqCelda("Aspecto",{header:true,width:2200}), rfqCelda("Contenido solicitado",{header:true,width:6800})]}) ];
+  condiciones.forEach(([a,b]) => { filasCond.push(new docx.TableRow({children:[rfqCelda(a,{width:2200,bold:true}), rfqCelda(b,{width:6800})]})); });
+  children.push(new docx.Table({width:{size:9000,type:docx.WidthType.DXA}, columnWidths:[2200,6800], rows:filasCond}));
+  children.push(new docx.Paragraph({text:"", spacing:{after:200}}));
+
+  children.push(rfqTitulo("5. Lugar de entrega"));
+  children.push(rfqParrafo(cab.lugarEntrega));
+
+  children.push(rfqTitulo("6. Plazo y forma de presentación de ofertas"));
+  children.push(rfqParrafo(`Las ofertas deberán remitirse antes del ${cab.fechaLimite} a la dirección de contacto indicada en el encabezado, incluyendo la totalidad de los aspectos solicitados en el apartado 4.`));
+
+  children.push(rfqTitulo("7. Observaciones"));
+  children.push(rfqParrafo(cab.observaciones || "Sin observaciones adicionales."));
+
+  return new docx.Document({ sections:[{ properties:{}, children }] });
+}
+
+function redaccionCorreoProveedores(cab) {
+  return "Asunto: Solicitud de oferta — " + cab.tituloRfq + "\n\n" +
+    "Estimados Sres.,\n\n" +
+    "Les adjuntamos petición de oferta (RFQ " + cab.refRfq + ") para el suministro descrito en el documento adjunto, " +
+    "correspondiente al proyecto " + cab.proyecto + ".\n\n" +
+    "Les agradeceríamos nos remitieran su oferta antes del " + cab.fechaLimite + ", incluyendo precio, plazo de entrega, " +
+    "capacidad de suministro y certificaciones de calidad aplicables.\n\n" +
+    "Quedamos a su disposición para cualquier aclaración técnica que precisen.\n\n" +
+    "Un cordial saludo,\n" + cab.solicitante;
+}
 
 /* ════════════════════ ENVÍO DE SOLICITUD ════════════════════ */
 function showBanner(tipo, msg){
@@ -693,7 +801,7 @@ async function enviarSolicitud(){
     var fechaSolicitud = document.getElementById('fFechaSolicitud').value;
 
     // 1) Carpeta: Pedidos/Departamento/Solicitante/Obra
-    var relPath = ['Pedidos', safeSeg(dep), safeSeg(solicitante), safeSeg(obra)].join('/');
+    var relPath = ['Compras', 'Pedidos', safeSeg(dep), safeSeg(solicitante), safeSeg(obra)].join('/');
     var folderServerRel = null;
     try{ folderServerRel = await ensureFolderPath(relPath); }
     catch(e){ console.warn('No se pudo crear la carpeta:', e.message); }
@@ -734,6 +842,8 @@ async function enviarSolicitud(){
         Cantidad: m.cant ? Number(m.cant) : null,
         Unidad: m.ud,
         PEC: m.pec,
+        VentaPresupuesto: m.venta ? Number(m.venta) : null,
+        CostePlanificado: m.coste ? Number(m.coste) : null,
         CaracteristicasEspecificas: (m.opcional?'[OPCIONAL] ':'') + m.caract,
         RefPedidoAnterior: m.refant,
         FichaTecnica: !!m.ficha,
@@ -751,6 +861,33 @@ async function enviarSolicitud(){
       }catch(e){ console.warn('No se pudo guardar el documento resumen:', e.message); }
     }
 
+    // 4b) RFQ en Word para proveedores + redacción de correo, en la misma carpeta
+    var rfqWebUrl = '', redaccionProveedores = '';
+    if(folderServerRel){
+      try{
+        var cabRfq = {
+          tituloRfq: 'Suministro — ' + obra,
+          proyecto: obra,
+          refRfq: 'RFQ-' + nSolicitud,
+          solicitante: 'TELICE, S.A.',
+          fechaEmision: fechaSolicitud,
+          contacto: solicitante + (jefeObra.Correo ? ' · ' + jefeObra.Correo : ''),
+          plazoOferta: '10 días naturales desde la recepción',
+          objeto: 'Se solicita oferta económica y técnica para el suministro de los materiales/servicios detallados a continuación, con destino a la obra ' + obra + '.',
+          lugarEntrega: (document.getElementById('fDireccion').value.trim() || ('Obra ' + obra)) +
+            (document.getElementById('fContacto').value.trim() ? ' · Contacto en obra: ' + document.getElementById('fContacto').value.trim() : ''),
+          fechaLimite: fechaEntrega,
+          observaciones: document.getElementById('fObservaciones').value.trim()
+        };
+        var docRFQ = generarDocumentoRFQ(cabRfq, materiales);
+        var blobRFQ = await docx.Packer.toBlob(docRFQ);
+        var bufRFQ = await blobRFQ.arrayBuffer();
+        var relPathRFQ = await uploadFileToFolder(folderServerRel, 'RFQ_' + nSolicitud + '.docx', bufRFQ);
+        rfqWebUrl = relPathRFQ ? (new URL(CFG.siteUrl).origin + relPathRFQ) : '';
+        redaccionProveedores = redaccionCorreoProveedores(cabRfq);
+      }catch(e){ console.warn('No se pudo generar el RFQ:', e.message); }
+    }
+
     // 5) Email automático a jefe de área + compras
     var destinatarios = CORREOS_COMPRAS.slice();
     if(jefeObra.ResponsableArea && jefeObra.ResponsableArea!==solicitante){
@@ -762,7 +899,9 @@ async function enviarSolicitud(){
       var cuerpo = '<p>Nueva solicitud de pedido <b>'+nSolicitud+'</b> — Obra '+obra+' ('+dep+').</p>' +
         '<p>Solicitante ('+document.getElementById('fRol').value+'): '+solicitante+'<br>Prioridad: '+document.getElementById('fPrioridad').value+
         '<br>Fecha de entrega solicitada: '+fechaEntrega+'</p>' +
-        (folderWebUrl ? '<p>Carpeta: <a href="'+folderWebUrl+'">'+folderWebUrl+'</a></p>' : '');
+        (folderWebUrl ? '<p>Carpeta del pedido: <a href="'+folderWebUrl+'">'+folderWebUrl+'</a></p>' : '') +
+        (rfqWebUrl ? '<p>RFQ para proveedores (Word): <a href="'+rfqWebUrl+'">'+rfqWebUrl+'</a></p>' : '') +
+        (redaccionProveedores ? '<p><b>Borrador de correo para proveedores</b> (copiar y pegar, adjuntando el RFQ):</p><pre style="white-space:pre-wrap;font-family:Segoe UI,sans-serif;background:#f4f5f7;padding:10px;border-radius:6px">'+redaccionProveedores.replace(/</g,'&lt;')+'</pre>' : '');
       await sendMailSP(destinatarios, 'Nueva solicitud de pedido ' + nSolicitud + ' - ' + obra, cuerpo);
     }catch(e){ mailOk = false; mailErr = e.message; }
 
@@ -800,6 +939,7 @@ function buildResumenTexto(n, cab, materiales){
   materiales.forEach(function(m, i){
     l.push((i+1) + '. ' + (m.opcional?'[OPCIONAL] ':'') + m.desc + '  |  ' + m.medidas);
     l.push('   Cantidad: ' + m.cant + ' ' + m.ud + (m.pec?('   PEC: '+m.pec):''));
+    if(m.venta || m.coste) l.push('   [Interno] Venta presupuesto: ' + (m.venta||'—') + ' €   Coste planificado: ' + (m.coste||'—') + ' €');
     if(m.caract) l.push('   ' + m.caract);
     if(m.refant) l.push('   Ref. pedido anterior: ' + m.refant);
   });
