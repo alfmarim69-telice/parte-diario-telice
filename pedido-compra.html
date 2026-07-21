@@ -567,6 +567,7 @@ async function arrancarApp(){
 
 var DEPARTAMENTOS_OBRA = ['Catenaria','Subestaciones','Instalaciones','Soluciones'];
 var ROL_DEPARTAMENTO_FIJO = true; // se recalcula en bloquearSolicitante()
+var CORREO_SOLICITANTE = ''; // correo del usuario autenticado, se rellena en bloquearSolicitante()
 
 // Bloquea el campo Solicitante a la persona autenticada — no es editable ni seleccionable,
 // para que nadie pueda enviar un pedido en nombre de otro. El Departamento/Jefe de obra
@@ -582,6 +583,7 @@ function bloquearSolicitante(){
   }
   document.getElementById('fSolicitante').value = j.Nombre;
   document.getElementById('fRol').value = j.Cargo || '';
+  CORREO_SOLICITANTE = j.Correo || '';
 
   var depSel = document.getElementById('fDepartamento');
   var wrap = document.getElementById('fJefeObraWrap');
@@ -934,7 +936,8 @@ async function enviarSolicitud(){
         var jArea = JEFES_OBRA.find(function(x){ return x.Nombre===jefeObra.ResponsableArea; });
         return (jArea && jArea.Correo) ? jArea.Correo : '';
       })(),
-      Observaciones: document.getElementById('fObservaciones').value.trim()
+      Observaciones: document.getElementById('fObservaciones').value.trim(),
+      CorreoSolicitante: CORREO_SOLICITANTE || ''
     });
 
     // 3) Líneas de material
