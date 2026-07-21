@@ -90,6 +90,7 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
 </style>
 <script src="msal-browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5/build/index.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -244,6 +245,9 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
       </div>
       <div class="fila-acciones">
         <button class="btn sec" onclick="addFilaMat()">+ Añadir material</button>
+        <button class="btn sec" onclick="document.getElementById('inputExcelMat').click()">📥 Importar desde Excel</button>
+        <input type="file" id="inputExcelMat" accept=".xlsx,.xls,.csv" style="display:none" onchange="importarMaterialesExcel(this)">
+        <span style="font-size:12.5px;color:#667;margin-left:6px">Admite cualquier Excel con columnas de descripción/cantidad; las demás son opcionales.</span>
       </div>
     </div>
 
@@ -741,6 +745,99 @@ function leerMateriales(){
   return out;
 }
 addFilaMat(); // fila inicial
+
+/* ════════════════════ MATERIALES: IMPORTAR DESDE EXCEL ════════════════════ */
+// Sinónimos aceptados para cada columna de nuestra tabla. La comparación se hace
+// normalizando (minúsculas, sin tildes, sin espacios/guiones) para que dé igual
+// cómo el jefe de área haya titulado sus columnas en su propio Excel.
+var MAT_SINONIMOS = {
+  desc:    ['descripcion','descripciondelmaterial','concepto','producto','material','articulo','item','denominacion'],
+  medidas: ['medidas','especificacion','especificaciones','medidasespecificacion','dimensiones','caracteristicastecnicas'],
+  cant:    ['cantidad','cant','uds','unidades','cantidadsolicitada','ctd'],
+  ud:      ['ud','unidad','unidaddemedida','um'],
+  pec:     ['pec','precio','preciounitario','importe'],
+  caract:  ['caracteristicasespecificas','caracteristicas','observaciones','notas','detalle'],
+  refant:  ['refpedidoanterior','referenciaanterior','refanterior','pedidoanterior','referencia','ref']
+};
+function normalizarTexto(s){
+  return String(s||'').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // quita tildes
+    .replace(/[^a-z0-9]/g,''); // quita espacios, guiones, símbolos
+}
+function importarMaterialesExcel(input){
+  var file = input.files && input.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      var wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+      var hoja = wb.Sheets[wb.SheetNames[0]];
+      var filas = XLSX.utils.sheet_to_json(hoja, {header:1, defval:'', blankrows:false});
+      if(!filas.length){ showBanner('err','El archivo está vacío.'); input.value=''; return; }
+
+      // Localizamos la fila de cabeceras: la primera fila con al menos 2 celdas de texto no vacías.
+      var filaCabIdx = filas.findIndex(function(f){ return f.filter(function(c){ return String(c).trim()!==''; }).length >= 2; });
+      if(filaCabIdx === -1){ showBanner('err','No se ha podido interpretar el archivo.'); input.value=''; return; }
+      var cabeceras = filas[filaCabIdx].map(normalizarTexto);
+
+      // Para cada campo de nuestra tabla, buscamos en qué columna del Excel está.
+      var colPorCampo = {};
+      Object.keys(MAT_SINONIMOS).forEach(function(campo){
+        var idx = cabeceras.findIndex(function(c){ return MAT_SINONIMOS[campo].indexOf(c) !== -1; });
+        if(idx !== -1) colPorCampo[campo] = idx;
+      });
+
+      if(colPorCampo.desc === undefined){
+        showBanner('err','No se ha encontrado una columna de "Descripción" en el Excel. Revisa los nombres de las columnas o rellena esta fila manualmente.');
+        input.value=''; return;
+      }
+
+      var filasDatos = filas.slice(filaCabIdx+1).filter(function(f){
+        return f.some(function(c){ return String(c).trim()!==''; });
+      });
+      if(!filasDatos.length){ showBanner('err','No se han encontrado filas de materiales debajo de la cabecera.'); input.value=''; return; }
+
+      // Si la tabla solo tiene la fila inicial vacía, la quitamos antes de importar.
+      var filasActuales = document.querySelectorAll('#filasMat tr');
+      if(filasActuales.length===1){
+        var vacia = leerMateriales().length===0;
+        if(vacia) filasActuales[0].remove();
+      }
+
+      var importadas = 0;
+      filasDatos.forEach(function(f){
+        function val(campo){
+          var idx = colPorCampo[campo];
+          return idx===undefined ? '' : String(f[idx]!==undefined ? f[idx] : '').trim();
+        }
+        var desc = val('desc');
+        if(!desc) return; // fila sin descripción, se ignora
+        addFilaMat();
+        var tr = document.getElementById('filasMat').lastElementChild;
+        tr.querySelector('[data-f="desc"]').value = desc;
+        tr.querySelector('[data-f="medidas"]').value = val('medidas');
+        tr.querySelector('[data-f="cant"]').value = val('cant');
+        tr.querySelector('[data-f="ud"]').value = val('ud');
+        tr.querySelector('[data-f="pec"]').value = val('pec');
+        tr.querySelector('[data-f="caract"]').value = val('caract');
+        tr.querySelector('[data-f="refant"]').value = val('refant');
+        importadas++;
+      });
+
+      var camposNoEncontrados = Object.keys(MAT_SINONIMOS).filter(function(c){ return colPorCampo[c]===undefined && c!=='desc'; });
+      var aviso = 'Se han importado ' + importadas + ' materiales desde el Excel.';
+      if(camposNoEncontrados.length){
+        aviso += ' No se han encontrado columnas para: ' + camposNoEncontrados.join(', ') + ' (puedes rellenarlas a mano si las necesitas).';
+      }
+      showBanner('ok', aviso);
+    }catch(err){
+      showBanner('err', 'Error al leer el Excel: ' + err.message);
+    }finally{
+      input.value = '';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
 
 /* ════════════════════ GENERADOR DE RFQ (Word) ════════════════════ */
 function rfqBorder() {
