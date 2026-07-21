@@ -190,7 +190,10 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
       <div class="grid" style="margin-top:14px">
         <div class="field">
           <label>Obra *</label>
-          <input type="text" id="fObra" placeholder="Ej. 25-388 LAC Lorca-Almería">
+          <select id="fObra" onchange="onObraSelectChange()">
+            <option value="">Selecciona jefe de obra primero…</option>
+          </select>
+          <input type="text" id="fObraOtro" placeholder="Escribe el nombre de la obra nueva" style="display:none;margin-top:6px">
         </div>
         <div class="field">
           <label>Centro de coste</label>
@@ -302,6 +305,7 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
             <option>Catenaria</option>
             <option>Instalaciones</option>
             <option>Subestaciones</option>
+            <option>Soluciones</option>
             <option>Planificación</option>
             <option>General</option>
           </select>
@@ -552,6 +556,7 @@ async function arrancarApp(){
     if(!currentAccount()) await login();
     setConn('Conectado · ' + (currentAccount().username || currentAccount().name || ''));
     await cargarJefesObra();
+    await cargarObras();
     bloquearSolicitante();
     llenarFiltroEstado();
   }catch(e){
@@ -560,7 +565,7 @@ async function arrancarApp(){
   }
 }
 
-var DEPARTAMENTOS_OBRA = ['Catenaria','Subestaciones','Instalaciones'];
+var DEPARTAMENTOS_OBRA = ['Catenaria','Subestaciones','Instalaciones','Soluciones'];
 var ROL_DEPARTAMENTO_FIJO = true; // se recalcula en bloquearSolicitante()
 
 // Bloquea el campo Solicitante a la persona autenticada — no es editable ni seleccionable,
@@ -590,6 +595,7 @@ function bloquearSolicitante(){
     depSel.disabled = true;
     wrap.style.display = 'none';
     document.getElementById('fJefeArea').value = j.ResponsableArea || '';
+    refrescarObras(j.Nombre);
   } else {
     // Director de Operaciones / Jefe de Compras / Planificación: eligen para qué
     // departamento, jefe de obra y obra es el pedido.
@@ -599,6 +605,7 @@ function bloquearSolicitante(){
     wrap.style.display = '';
     document.getElementById('fJefeObraCtx').innerHTML = '<option value="">Selecciona departamento primero…</option>';
     document.getElementById('fJefeArea').value = '';
+    refrescarObras(null);
   }
 }
 
@@ -613,6 +620,7 @@ function onJefeObraContextoChange(){
   var nombre = document.getElementById('fJefeObraCtx').value;
   var j = JEFES_OBRA.find(function(x){ return x.Nombre===nombre; });
   document.getElementById('fJefeArea').value = j ? (j.ResponsableArea||'') : '';
+  refrescarObras(nombre);
 }
 
 async function cargarJefesObra(){
@@ -620,6 +628,33 @@ async function cargarJefesObra(){
   JEFES_OBRA = (data.value||[]).map(function(x){
     return { Nombre:x.Title, Departamento:x.Departamento, Correo:x.Correo, ResponsableArea:x.ResponsableArea, EsResponsable:!!x.EsResponsable, Cargo:x.Cargo||'' };
   });
+}
+
+var OBRAS = [];
+async function cargarObras(){
+  try{
+    var data = await spGet("/lists/GetByTitle('M_Obras')/items?$select=Title,Departamento,JefeObra,Activa&$top=1000");
+    OBRAS = (data.value||[]).map(function(x){
+      return { Titulo:x.Title, Departamento:x.Departamento, JefeObra:x.JefeObra, Activa: x.Activa!==false };
+    });
+  }catch(e){ console.warn('No se pudo cargar M_Obras:', e.message); OBRAS = []; }
+}
+
+// Rellena el desplegable de Obra con las obras del jefe de obra indicado (más la opción
+// "Otra obra nueva" para cuando todavía no está cargada en la lista maestra).
+function refrescarObras(jefeObraNombre){
+  var sel = document.getElementById('fObra');
+  var lista = OBRAS.filter(function(o){ return o.Activa && o.JefeObra && o.JefeObra.trim().toLowerCase()===(jefeObraNombre||'').trim().toLowerCase(); });
+  var opciones = '<option value="">Selecciona…</option>' +
+    lista.map(function(o){ return '<option value="'+o.Titulo+'">'+o.Titulo+'</option>'; }).join('') +
+    '<option value="__OTRA__">+ Otra obra (todavía no está en la lista)</option>';
+  sel.innerHTML = opciones;
+  document.getElementById('fObraOtro').style.display = 'none';
+  document.getElementById('fObraOtro').value = '';
+}
+function onObraSelectChange(){
+  var esOtra = document.getElementById('fObra').value === '__OTRA__';
+  document.getElementById('fObraOtro').style.display = esOtra ? 'block' : 'none';
 }
 
 /* ════════════════════ CAMBIAR CONTRASEÑA ════════════════════ */
@@ -828,7 +863,9 @@ async function generarNumSolicitud(){
 async function enviarSolicitud(){
   var solicitante = document.getElementById('fSolicitante').value.trim();
   var dep = document.getElementById('fDepartamento').value;
-  var obra = document.getElementById('fObra').value.trim();
+  var obra = document.getElementById('fObra').value === '__OTRA__'
+    ? document.getElementById('fObraOtro').value.trim()
+    : document.getElementById('fObra').value.trim();
   var fechaEntrega = document.getElementById('fFechaEntrega').value;
   var materiales = leerMateriales();
 
@@ -962,6 +999,15 @@ async function enviarSolicitud(){
     try{
       await spPatch('PedidosCompra', cab.Id, { UrlRFQ: rfqWebUrl, RedaccionProveedores: redaccionProveedores });
     }catch(e){ console.warn('No se pudo guardar UrlRFQ/RedaccionProveedores:', e.message); }
+
+    // 6) Si era una obra nueva (no estaba en M_Obras), la añadimos para la próxima vez
+    var eraObraNueva = document.getElementById('fObra').value === '__OTRA__';
+    if(eraObraNueva && obra){
+      try{
+        await spPost('M_Obras', { Title: obra, Departamento: dep, JefeObra: jefeObraNombre, Activa: true });
+        OBRAS.push({ Titulo:obra, Departamento:dep, JefeObra:jefeObraNombre, Activa:true });
+      }catch(e){ console.warn('No se pudo dar de alta la obra nueva en M_Obras:', e.message); }
+    }
 
     showBanner('ok', 'Solicitud ' + nSolicitud + ' enviada y guardada correctamente. El aviso a compras lo envía automáticamente el flujo de Power Automate en cuanto detecta el pedido nuevo (no instantáneo).');
     document.getElementById('estadoEnvio').textContent = '';
