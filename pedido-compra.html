@@ -171,12 +171,16 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
           <input type="text" id="fSolicitante" readonly>
         </div>
         <div class="field">
-          <label>Departamento</label>
-          <input type="text" id="fDepartamento" readonly placeholder="Autocompletado">
+          <label>Departamento *</label>
+          <select id="fDepartamento" onchange="onDepartamentoContextoChange()">
+            <option value="">Autocompletado</option>
+          </select>
         </div>
-        <div class="field">
-          <label>Jefe de área</label>
-          <input type="text" id="fJefeArea" readonly placeholder="Autocompletado">
+        <div class="field" id="fJefeObraWrap" style="display:none">
+          <label>Jefe de obra *</label>
+          <select id="fJefeObraCtx" onchange="onJefeObraContextoChange()">
+            <option value="">Selecciona departamento primero…</option>
+          </select>
         </div>
         <div class="field">
           <label>Rol del solicitante</label>
@@ -197,6 +201,8 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
           <input type="text" id="fAlmacen">
         </div>
         <div class="field">
+          <label>Jefe de área</label>
+          <input type="text" id="fJefeArea" readonly placeholder="Autocompletado">
         </div>
       </div>
       <div class="grid" style="margin-top:14px">
@@ -554,15 +560,14 @@ async function arrancarApp(){
   }
 }
 
-async function cargarJefesObra(){
-  var data = await spGet("/lists/GetByTitle('M_JefesObra')/items?$select=Title,Departamento,Correo,ResponsableArea,EsResponsable,Cargo&$top=500");
-  JEFES_OBRA = (data.value||[]).map(function(x){
-    return { Nombre:x.Title, Departamento:x.Departamento, Correo:x.Correo, ResponsableArea:x.ResponsableArea, EsResponsable:!!x.EsResponsable, Cargo:x.Cargo||'' };
-  });
-}
+var DEPARTAMENTOS_OBRA = ['Catenaria','Subestaciones','Instalaciones'];
+var ROL_DEPARTAMENTO_FIJO = true; // se recalcula en bloquearSolicitante()
 
 // Bloquea el campo Solicitante a la persona autenticada — no es editable ni seleccionable,
-// para que nadie pueda enviar un pedido en nombre de otro.
+// para que nadie pueda enviar un pedido en nombre de otro. El Departamento/Jefe de obra
+// sí se dejan elegir cuando el solicitante no pertenece a ninguno de los tres departamentos
+// de obra (Director de Operaciones, Jefe de Compras, Planificación…), ya que en esos casos
+// el pedido es "para" un departamento/jefe de obra distinto del propio solicitante.
 function bloquearSolicitante(){
   var j = JEFES_OBRA.find(function(x){ return x.Nombre.trim().toLowerCase() === SESION.nombre.trim().toLowerCase(); });
   if(!j){
@@ -571,9 +576,50 @@ function bloquearSolicitante(){
     return;
   }
   document.getElementById('fSolicitante').value = j.Nombre;
-  document.getElementById('fDepartamento').value = j.Departamento || '';
-  document.getElementById('fJefeArea').value = j.ResponsableArea || '';
   document.getElementById('fRol').value = j.Cargo || '';
+
+  var depSel = document.getElementById('fDepartamento');
+  var wrap = document.getElementById('fJefeObraWrap');
+
+  ROL_DEPARTAMENTO_FIJO = DEPARTAMENTOS_OBRA.indexOf(j.Departamento) !== -1;
+
+  if(ROL_DEPARTAMENTO_FIJO){
+    // Jefe de obra / jefe de área normal: su departamento y su nombre son inequívocos.
+    depSel.innerHTML = '<option value="'+j.Departamento+'">'+j.Departamento+'</option>';
+    depSel.value = j.Departamento;
+    depSel.disabled = true;
+    wrap.style.display = 'none';
+    document.getElementById('fJefeArea').value = j.ResponsableArea || '';
+  } else {
+    // Director de Operaciones / Jefe de Compras / Planificación: eligen para qué
+    // departamento, jefe de obra y obra es el pedido.
+    depSel.innerHTML = '<option value="">Selecciona…</option>' + DEPARTAMENTOS_OBRA.map(function(d){ return '<option>'+d+'</option>'; }).join('');
+    depSel.value = '';
+    depSel.disabled = false;
+    wrap.style.display = '';
+    document.getElementById('fJefeObraCtx').innerHTML = '<option value="">Selecciona departamento primero…</option>';
+    document.getElementById('fJefeArea').value = '';
+  }
+}
+
+function onDepartamentoContextoChange(){
+  var dep = document.getElementById('fDepartamento').value;
+  var sel = document.getElementById('fJefeObraCtx');
+  var lista = JEFES_OBRA.filter(function(x){ return x.Departamento===dep; });
+  sel.innerHTML = '<option value="">Selecciona…</option>' + lista.map(function(x){ return '<option value="'+x.Nombre+'">'+x.Nombre+'</option>'; }).join('');
+  document.getElementById('fJefeArea').value = '';
+}
+function onJefeObraContextoChange(){
+  var nombre = document.getElementById('fJefeObraCtx').value;
+  var j = JEFES_OBRA.find(function(x){ return x.Nombre===nombre; });
+  document.getElementById('fJefeArea').value = j ? (j.ResponsableArea||'') : '';
+}
+
+async function cargarJefesObra(){
+  var data = await spGet("/lists/GetByTitle('M_JefesObra')/items?$select=Title,Departamento,Correo,ResponsableArea,EsResponsable,Cargo&$top=500");
+  JEFES_OBRA = (data.value||[]).map(function(x){
+    return { Nombre:x.Title, Departamento:x.Departamento, Correo:x.Correo, ResponsableArea:x.ResponsableArea, EsResponsable:!!x.EsResponsable, Cargo:x.Cargo||'' };
+  });
 }
 
 /* ════════════════════ CAMBIAR CONTRASEÑA ════════════════════ */
@@ -794,6 +840,10 @@ async function enviarSolicitud(){
     showBanner('err', 'Faltan campos obligatorios: Solicitante, Obra y Fecha de entrega.');
     return;
   }
+  if(!ROL_DEPARTAMENTO_FIJO && !document.getElementById('fJefeObraCtx').value){
+    showBanner('err', 'Selecciona a qué jefe de obra corresponde este pedido.');
+    return;
+  }
   if(materiales.length===0){
     showBanner('err', 'Añade al menos un material con descripción y cantidad.');
     return;
@@ -807,12 +857,13 @@ async function enviarSolicitud(){
     await ensureReady();
     if(!currentAccount()) await login();
 
-    var jefeObra = JEFES_OBRA.find(function(x){ return x.Nombre===solicitante; }) || {};
+    var jefeObraNombre = ROL_DEPARTAMENTO_FIJO ? solicitante : document.getElementById('fJefeObraCtx').value;
+    var jefeObra = JEFES_OBRA.find(function(x){ return x.Nombre===jefeObraNombre; }) || {};
     var nSolicitud = await generarNumSolicitud();
     var fechaSolicitud = document.getElementById('fFechaSolicitud').value;
 
-    // 1) Carpeta: Pedidos/Departamento/Solicitante/Obra
-    var relPath = ['Compras', 'Pedidos', safeSeg(dep), safeSeg(solicitante), safeSeg(obra)].join('/');
+    // 1) Carpeta: Pedidos/Departamento/JefeDeObra/Obra
+    var relPath = ['Compras', 'Pedidos', safeSeg(dep), safeSeg(jefeObraNombre), safeSeg(obra)].join('/');
     var folderServerRel = null;
     try{ folderServerRel = await ensureFolderPath(relPath); }
     catch(e){ console.warn('No se pudo crear la carpeta:', e.message); }
@@ -832,7 +883,7 @@ async function enviarSolicitud(){
       VentaPresupuesto: document.getElementById('fVentaPresupuesto').value ? Number(document.getElementById('fVentaPresupuesto').value) : null,
       CostePlanificado: document.getElementById('fCostePlanificado').value ? Number(document.getElementById('fCostePlanificado').value) : null,
       Solicitante: solicitante,
-      JefeObra: solicitante,
+      JefeObra: jefeObraNombre,
       JefeArea: jefeObra.ResponsableArea || '',
       DireccionEntrega: document.getElementById('fDireccion').value.trim(),
       PersonaContacto: document.getElementById('fContacto').value.trim(),
@@ -870,7 +921,7 @@ async function enviarSolicitud(){
     // 4) Documento resumen (texto plano) en la carpeta
     if(folderServerRel){
       try{
-        var resumen = buildResumenTexto(nSolicitud, {dep:dep, obra:obra, jefeObra:solicitante, jefeArea:jefeObra.ResponsableArea,
+        var resumen = buildResumenTexto(nSolicitud, {dep:dep, obra:obra, jefeObra:jefeObraNombre, jefeArea:jefeObra.ResponsableArea,
           solicitante:solicitante, fechaSolicitud:fechaSolicitud, fechaEntrega:fechaEntrega,
           prioridad:document.getElementById('fPrioridad').value,
           venta:document.getElementById('fVentaPresupuesto').value, coste:document.getElementById('fCostePlanificado').value}, materiales);
