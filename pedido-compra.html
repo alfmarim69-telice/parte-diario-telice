@@ -573,6 +573,17 @@ var DEPARTAMENTOS_OBRA = ['Catenaria','Subestaciones','Instalaciones','Solucione
 var ROL_DEPARTAMENTO_FIJO = true; // se recalcula en bloquearSolicitante()
 var CORREO_SOLICITANTE = ''; // correo del usuario autenticado, se rellena en bloquearSolicitante()
 
+// Únicas personas autorizadas a cambiar el Estado de un pedido en Seguimiento.
+// El resto de usuarios ven el estado (para saber en qué punto está su pedido) pero no pueden tocarlo.
+var PUEDEN_CAMBIAR_ESTADO = ['alfredo marin hidalgo', 'jose manuel sanchez garcia'];
+function normalizarNombre(s){
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+}
+function puedeCambiarEstado(){
+  if(!SESION || !SESION.nombre) return false;
+  return PUEDEN_CAMBIAR_ESTADO.indexOf(normalizarNombre(SESION.nombre)) !== -1;
+}
+
 // Bloquea el campo Solicitante a la persona autenticada — no es editable ni seleccionable,
 // para que nadie pueda enviar un pedido en nombre de otro. El Departamento/Jefe de obra
 // sí se dejan elegir cuando el solicitante no pertenece a ninguno de los tres departamentos
@@ -1182,9 +1193,15 @@ function renderTablaSeg(){
   var html = '<table class="segui"><thead><tr>' +
     '<th>N.º</th><th>Fecha</th><th>Obra</th><th>Departamento</th><th>Jefe de obra</th>' +
     '<th>Prioridad</th><th>Progreso</th><th>Estado</th><th>Carpeta</th></tr></thead><tbody>';
+  var puedeEditar = puedeCambiarEstado();
   lista.forEach(function(p){
     var idx = ESTADOS.indexOf(p.Estado);
     var barra = ESTADOS.map(function(e,i){ return '<i class="'+(i<=idx?'done':'')+'"></i>'; }).join('');
+    var celdaEstado = puedeEditar
+      ? '<select class="estado-sel" onchange="cambiarEstado('+p.Id+',this.value)">' +
+          ESTADOS.map(function(e){ return '<option '+(e===p.Estado?'selected':'')+'>'+e+'</option>'; }).join('') +
+        '</select>'
+      : '<span class="pill" style="background:#5b6b82">'+(p.Estado||'—')+'</span>';
     html += '<tr>' +
       '<td><b>'+p.Title+'</b></td>' +
       '<td>'+(p.FechaSolicitud||'').slice(0,10)+'</td>' +
@@ -1193,9 +1210,7 @@ function renderTablaSeg(){
       '<td>'+(p.JefeObra||'')+'</td>' +
       '<td><span class="pill" style="background:'+(p.Prioridad==='Alta'?'#c0392b':p.Prioridad==='Media'?'#C55A11':'#8a97ab')+'">'+p.Prioridad+'</span></td>' +
       '<td><div class="progreso">'+barra+'</div></td>' +
-      '<td><select class="estado-sel" onchange="cambiarEstado('+p.Id+',this.value)">' +
-        ESTADOS.map(function(e){ return '<option '+(e===p.Estado?'selected':'')+'>'+e+'</option>'; }).join('') +
-      '</select></td>' +
+      '<td>'+celdaEstado+'</td>' +
       '<td>'+(p.UrlCarpeta?('<a class="link-carpeta" target="_blank" href="'+p.UrlCarpeta+'">Abrir ↗</a>'):'—')+'</td>' +
       '</tr>';
   });
@@ -1204,6 +1219,7 @@ function renderTablaSeg(){
 }
 
 async function cambiarEstado(id, nuevoEstado){
+  if(!puedeCambiarEstado()){ alert('No tienes permiso para cambiar el estado de los pedidos.'); return; }
   try{
     await spPatch('PedidosCompra', id, { Estado: nuevoEstado });
     var p = PEDIDOS_CACHE.find(function(x){ return x.Id===id; });
