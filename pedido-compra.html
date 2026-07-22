@@ -860,12 +860,12 @@ function rfqBorder() {
 }
 const RFQ_AZUL = "1F3864";
 
-function rfqCelda(texto, {header=false, width=2500, bold=false}={}) {
+function rfqCelda(texto, {header=false, width=2500, bold=false, color}={}) {
   return new docx.TableCell({
     width:{size:width, type:docx.WidthType.DXA}, verticalAlign: docx.VerticalAlign.CENTER,
     shading: header ? {type:docx.ShadingType.CLEAR, fill:RFQ_AZUL} : undefined,
     borders: rfqBorder(), margins:{top:80,bottom:80,left:100,right:100},
-    children:[new docx.Paragraph({children:[new docx.TextRun({text:String(texto??""), bold:header||bold, color:header?"FFFFFF":undefined, size:20})]})]
+    children:[new docx.Paragraph({children:[new docx.TextRun({text:String(texto??""), bold:header||bold, color:header?"FFFFFF":color, size:20})]})]
   });
 }
 function rfqTitulo(texto) {
@@ -891,6 +891,7 @@ function generarDocumentoRFQ(cab, materiales) {
       new docx.TableRow({children:[rfqCelda("Proyecto",{header:true}), rfqCelda(cab.proyecto), rfqCelda("Ref. RFQ",{header:true}), rfqCelda(cab.refRfq)]}),
       new docx.TableRow({children:[rfqCelda("Solicitante",{header:true}), rfqCelda(cab.solicitante), rfqCelda("Fecha emisión",{header:true}), rfqCelda(cab.fechaEmision)]}),
       new docx.TableRow({children:[rfqCelda("Contacto",{header:true}), rfqCelda(cab.contacto), rfqCelda("Plazo de oferta",{header:true}), rfqCelda(cab.plazoOferta)]}),
+      new docx.TableRow({children:[rfqCelda("Fecha de necesidad",{header:true}), rfqCelda(cab.fechaNecesidad, {bold:true, color:RFQ_AZUL}), rfqCelda("",{header:true}), rfqCelda("")]}),
     ]}),
     new docx.Paragraph({text:"", spacing:{after:200}})
   );
@@ -932,11 +933,16 @@ function generarDocumentoRFQ(cab, materiales) {
   children.push(new docx.Table({width:{size:9000,type:docx.WidthType.DXA}, columnWidths:[2200,6800], rows:filasCond}));
   children.push(new docx.Paragraph({text:"", spacing:{after:200}}));
 
-  children.push(rfqTitulo("5. Lugar de entrega"));
+  children.push(rfqTitulo("5. Lugar y fecha de entrega"));
   children.push(rfqParrafo(cab.lugarEntrega));
+  children.push(new docx.Paragraph({ spacing:{after:120}, children:[
+    new docx.TextRun({text:"Fecha de entrega necesaria en obra: ", bold:true, size:20}),
+    new docx.TextRun({text:cab.fechaNecesidad, bold:true, color:RFQ_AZUL, size:20}),
+    new docx.TextRun({text:" — el material debe estar disponible en obra en esta fecha, salvo indicación distinta acordada con el solicitante.", size:20}),
+  ]}));
 
   children.push(rfqTitulo("6. Plazo y forma de presentación de ofertas"));
-  children.push(rfqParrafo(`Las ofertas deberán remitirse antes del ${cab.fechaLimite} a la dirección de contacto indicada en el encabezado, incluyendo la totalidad de los aspectos solicitados en el apartado 4.`));
+  children.push(rfqParrafo(`Las ofertas deberán remitirse antes del ${cab.fechaLimite} a la dirección de contacto indicada en el encabezado, incluyendo la totalidad de los aspectos solicitados en el apartado 4. Esta fecha corresponde al plazo para presentar la oferta, y es independiente de la fecha de entrega necesaria del material indicada en el apartado 5.`));
 
   children.push(rfqTitulo("7. Observaciones"));
   children.push(rfqParrafo(cab.observaciones || "Sin observaciones adicionales."));
@@ -950,7 +956,8 @@ function redaccionCorreoProveedores(cab) {
     "Les adjuntamos petición de oferta (RFQ " + cab.refRfq + ") para el suministro descrito en el documento adjunto, " +
     "correspondiente al proyecto " + cab.proyecto + ".\n\n" +
     "Les agradeceríamos nos remitieran su oferta antes del " + cab.fechaLimite + ", incluyendo precio, plazo de entrega, " +
-    "capacidad de suministro y certificaciones de calidad aplicables.\n\n" +
+    "capacidad de suministro y certificaciones de calidad aplicables. La fecha de entrega necesaria del material en obra es el " +
+    cab.fechaNecesidad + "; rogamos indiquen expresamente en su oferta si pueden cumplirla.\n\n" +
     "Quedamos a su disposición para cualquier aclaración técnica que precisen.\n\n" +
     "Un cordial saludo,\n" + cab.solicitante;
 }
@@ -1082,6 +1089,18 @@ async function enviarSolicitud(){
     var rfqWebUrl = '', redaccionProveedores = '';
     if(folderServerRel){
       try{
+        var hoyMasDias = function(dias){
+          var d = new Date();
+          d.setDate(d.getDate() + dias);
+          var dd = String(d.getDate()).padStart(2,'0');
+          var mm = String(d.getMonth()+1).padStart(2,'0');
+          return dd + '/' + mm + '/' + d.getFullYear();
+        };
+        var formatearFechaISO = function(iso){
+          if(!iso) return iso;
+          var partes = iso.split('-');
+          return partes.length===3 ? (partes[2] + '/' + partes[1] + '/' + partes[0]) : iso;
+        };
         var cabRfq = {
           tituloRfq: 'Suministro — ' + obra,
           proyecto: obra,
@@ -1093,7 +1112,8 @@ async function enviarSolicitud(){
           objeto: 'Se solicita oferta económica y técnica para el suministro de los materiales/servicios detallados a continuación, con destino a la obra ' + obra + '.',
           lugarEntrega: (document.getElementById('fDireccion').value.trim() || ('Obra ' + obra)) +
             (document.getElementById('fContacto').value.trim() ? ' · Contacto en obra: ' + document.getElementById('fContacto').value.trim() : ''),
-          fechaLimite: fechaEntrega,
+          fechaNecesidad: formatearFechaISO(fechaEntrega),
+          fechaLimite: hoyMasDias(10),
           observaciones: document.getElementById('fObservaciones').value.trim()
         };
         var docRFQ = generarDocumentoRFQ(cabRfq, materiales);
