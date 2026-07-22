@@ -1169,7 +1169,7 @@ async function cargarPedidos(){
   try{
     await ensureReady();
     if(!currentAccount()) await login();
-    var data = await spGet("/lists/GetByTitle('PedidosCompra')/items?$top=5000&$select=Id,Title,FechaSolicitud,FechaEntrega,Prioridad,Departamento,Obra,Solicitante,JefeObra,JefeArea,Estado,UrlCarpeta,Observaciones");
+    var data = await spGet("/lists/GetByTitle('PedidosCompra')/items?$top=5000&$select=Id,Title,FechaSolicitud,FechaEntrega,FechaPrevistaEntrega,Prioridad,Departamento,Obra,Solicitante,JefeObra,JefeArea,Estado,UrlCarpeta,Observaciones");
     PEDIDOS_CACHE = (data.value||[]).sort(function(a,b){ return (b.FechaSolicitud||'').localeCompare(a.FechaSolicitud||''); });
     renderTablaSeg();
   }catch(e){
@@ -1191,7 +1191,7 @@ function renderTablaSeg(){
   if(lista.length===0){ wrap.innerHTML = '<div class="vacio">No hay pedidos con estos filtros.</div>'; return; }
 
   var html = '<table class="segui"><thead><tr>' +
-    '<th>N.º</th><th>Fecha</th><th>Obra</th><th>Departamento</th><th>Jefe de obra</th>' +
+    '<th>N.º</th><th>Fecha solicitud</th><th>Entrega solicitada</th><th>Entrega prevista</th><th>Obra</th><th>Departamento</th><th>Jefe de obra</th>' +
     '<th>Prioridad</th><th>Progreso</th><th>Estado</th><th>Carpeta</th></tr></thead><tbody>';
   var puedeEditar = puedeCambiarEstado();
   lista.forEach(function(p){
@@ -1205,6 +1205,8 @@ function renderTablaSeg(){
     html += '<tr>' +
       '<td><b>'+p.Title+'</b></td>' +
       '<td>'+(p.FechaSolicitud||'').slice(0,10)+'</td>' +
+      '<td>'+(p.FechaEntrega||'').slice(0,10)+'</td>' +
+      '<td>'+(p.FechaPrevistaEntrega ? p.FechaPrevistaEntrega.slice(0,10) : '<span style="color:#98a2b3">Pendiente</span>')+'</td>' +
       '<td>'+(p.Obra||'')+'</td>' +
       '<td>'+(p.Departamento||'')+'</td>' +
       '<td>'+(p.JefeObra||'')+'</td>' +
