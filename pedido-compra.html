@@ -277,8 +277,9 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
           <input type="text" id="fNumEnvios" value="UNICO">
         </div>
         <div class="field">
-          <label>Adjuntar documento</label>
+          <label>Adjuntar documento (p.ej. especificación técnica)</label>
           <input type="file" id="fAdjunto">
+          <span style="font-size:12px;color:#667;display:block;margin-top:3px">Se guardará en la carpeta del pedido y llegará a Compras en el aviso.</span>
         </div>
       </div>
     </div>
@@ -1104,12 +1105,25 @@ async function enviarSolicitud(){
       }catch(e){ console.warn('No se pudo generar el RFQ:', e.message); }
     }
 
-    // 5) Guardar enlace al RFQ y redacción para proveedores en el propio pedido
+    // 4c) Documento adjunto (p.ej. especificación técnica), si el usuario ha elegido uno
+    var adjuntoWebUrl = '';
+    var inputAdjunto = document.getElementById('fAdjunto');
+    var archivoAdjunto = inputAdjunto && inputAdjunto.files && inputAdjunto.files[0];
+    if(folderServerRel && archivoAdjunto){
+      try{
+        var bufAdjunto = await archivoAdjunto.arrayBuffer();
+        var nombreAdjunto = nSolicitud + '_' + archivoAdjunto.name.replace(/[~#%&*:<>?\/\\{}|"]/g,'').trim();
+        var relPathAdjunto = await uploadFileToFolder(folderServerRel, nombreAdjunto, bufAdjunto);
+        adjuntoWebUrl = relPathAdjunto ? (new URL(CFG.siteUrl).origin + relPathAdjunto) : '';
+      }catch(e){ console.warn('No se pudo subir el documento adjunto:', e.message); }
+    }
+
+    // 5) Guardar enlace al RFQ, al adjunto y la redacción para proveedores en el propio pedido
     //    (el envío de correo lo hace un flujo de Power Automate — la API SendEmail de
     //    SharePoint que se usaba antes fue retirada por Microsoft y ya no funciona)
     try{
-      await spPatch('PedidosCompra', cab.Id, { UrlRFQ: rfqWebUrl, RedaccionProveedores: redaccionProveedores });
-    }catch(e){ console.warn('No se pudo guardar UrlRFQ/RedaccionProveedores:', e.message); }
+      await spPatch('PedidosCompra', cab.Id, { UrlRFQ: rfqWebUrl, UrlAdjunto: adjuntoWebUrl, RedaccionProveedores: redaccionProveedores });
+    }catch(e){ console.warn('No se pudo guardar UrlRFQ/UrlAdjunto/RedaccionProveedores:', e.message); }
 
     // 6) Si era una obra nueva (no estaba en M_Obras), la añadimos para la próxima vez
     var eraObraNueva = document.getElementById('fObra').value === '__OTRA__';
