@@ -228,12 +228,13 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
         <thead>
           <tr>
             <th style="width:16%">Descripción</th>
-            <th style="width:14%">Medidas / Especificación</th>
+            <th style="width:12%">Medidas / Especificación / Referencia</th>
+            <th style="width:10%">Proveedor / Fabricante</th>
             <th style="width:6%">Cantidad</th>
             <th style="width:6%">Ud</th>
             <th style="width:8%">PEC</th>
-            <th style="width:18%">Características específicas</th>
-            <th style="width:8%">Ref. pedido anterior</th>
+            <th style="width:15%">Características específicas</th>
+            <th style="width:7%">Ref. pedido anterior</th>
             <th style="width:5%">Ficha técnica</th>
             <th style="width:5%">Doc. calidad</th>
             <th style="width:5%">Opcional</th>
@@ -730,6 +731,7 @@ function addFilaMat(){
   tr.innerHTML =
     '<td><input type="text" data-f="desc"></td>' +
     '<td><input type="text" data-f="medidas"></td>' +
+    '<td><input type="text" data-f="proveedor"></td>' +
     '<td><input type="number" data-f="cant" min="0" step="0.01"></td>' +
     '<td><input type="text" data-f="ud"></td>' +
     '<td><input type="text" data-f="pec"></td>' +
@@ -751,7 +753,7 @@ function leerMateriales(){
   document.querySelectorAll('#filasMat tr').forEach(function(tr){
     function v(f){ var el = tr.querySelector('[data-f="'+f+'"]'); return el ? (el.type==='checkbox'?el.checked:el.value.trim()) : ''; }
     if(!v('desc') && !v('cant')) return;
-    out.push({ desc:v('desc'), medidas:v('medidas'), cant:v('cant'), ud:v('ud'), pec:v('pec'),
+    out.push({ desc:v('desc'), medidas:v('medidas'), proveedor:v('proveedor'), cant:v('cant'), ud:v('ud'), pec:v('pec'),
                caract:v('caract'), refant:v('refant'), ficha:v('ficha'), calidad:v('calidad'), opcional:v('opcional') });
   });
   return out;
@@ -763,13 +765,14 @@ addFilaMat(); // fila inicial
 // normalizando (minúsculas, sin tildes, sin espacios/guiones) para que dé igual
 // cómo el jefe de área haya titulado sus columnas en su propio Excel.
 var MAT_SINONIMOS = {
-  desc:    ['descripcion','descripciondelmaterial','concepto','producto','material','articulo','item','denominacion'],
-  medidas: ['medidas','especificacion','especificaciones','medidasespecificacion','dimensiones','caracteristicastecnicas'],
-  cant:    ['cantidad','cant','uds','unidades','cantidadsolicitada','ctd'],
-  ud:      ['ud','unidad','unidaddemedida','um'],
-  pec:     ['pec','precio','preciounitario','importe'],
-  caract:  ['caracteristicasespecificas','caracteristicas','observaciones','notas','detalle'],
-  refant:  ['refpedidoanterior','referenciaanterior','refanterior','pedidoanterior','referencia','ref']
+  desc:      ['descripcion','descripciondelmaterial','concepto','producto','material','articulo','item','denominacion'],
+  medidas:   ['medidas','especificacion','especificaciones','medidasespecificacion','medidasespecificacionreferencia','dimensiones','caracteristicastecnicas'],
+  proveedor: ['proveedor','fabricante','proveedorfabricante','marca','proveedorrecomendado','fabricanterecomendado'],
+  cant:      ['cantidad','cant','uds','unidades','cantidadsolicitada','ctd'],
+  ud:        ['ud','unidad','unidaddemedida','um'],
+  pec:       ['pec','precio','preciounitario','importe'],
+  caract:    ['caracteristicasespecificas','caracteristicas','observaciones','notas','detalle'],
+  refant:    ['refpedidoanterior','referenciaanterior','refanterior','pedidoanterior','referencia','ref']
 };
 function normalizarTexto(s){
   return String(s||'').toLowerCase()
@@ -828,6 +831,7 @@ function importarMaterialesExcel(input){
         var tr = document.getElementById('filasMat').lastElementChild;
         tr.querySelector('[data-f="desc"]').value = desc;
         tr.querySelector('[data-f="medidas"]').value = val('medidas');
+        tr.querySelector('[data-f="proveedor"]').value = val('proveedor');
         tr.querySelector('[data-f="cant"]').value = val('cant');
         tr.querySelector('[data-f="ud"]').value = val('ud');
         tr.querySelector('[data-f="pec"]').value = val('pec');
@@ -901,21 +905,21 @@ function generarDocumentoRFQ(cab, materiales) {
 
   children.push(rfqTitulo("2. Especificación técnica"));
   materiales.forEach(m => {
-    const linea = m.desc + (m.medidas ? " — " + m.medidas : "") + (m.caract ? " (" + m.caract + ")" : "");
+    const linea = m.desc + (m.medidas ? " — " + m.medidas : "") + (m.proveedor ? " (ref. " + m.proveedor + ", o equivalente técnico)" : "") + (m.caract ? " (" + m.caract + ")" : "");
     children.push(rfqBullet(linea));
   });
 
   children.push(rfqTitulo("3. Medición prevista"));
   const filas = [ new docx.TableRow({children:[
-    rfqCelda("Descripción",{header:true,width:4500}), rfqCelda("Cantidad",{header:true,width:1500}),
-    rfqCelda("Ud.",{header:true,width:1000}), rfqCelda("Observaciones",{header:true,width:2000})
+    rfqCelda("Descripción",{header:true,width:3600}), rfqCelda("Fabricante ref.",{header:true,width:1600}), rfqCelda("Cantidad",{header:true,width:1200}),
+    rfqCelda("Ud.",{header:true,width:900}), rfqCelda("Observaciones",{header:true,width:1700})
   ]}) ];
   materiales.forEach(m => {
     filas.push(new docx.TableRow({children:[
-      rfqCelda(m.desc,{width:4500}), rfqCelda(m.cant,{width:1500}), rfqCelda(m.ud,{width:1000}), rfqCelda(m.refant||"",{width:2000})
+      rfqCelda(m.desc,{width:3600}), rfqCelda(m.proveedor||"",{width:1600}), rfqCelda(m.cant,{width:1200}), rfqCelda(m.ud,{width:900}), rfqCelda(m.refant||"",{width:1700})
     ]}));
   });
-  children.push(new docx.Table({width:{size:9000,type:docx.WidthType.DXA}, columnWidths:[4500,1500,1000,2000], rows:filas}));
+  children.push(new docx.Table({width:{size:9000,type:docx.WidthType.DXA}, columnWidths:[3600,1600,1200,900,1700], rows:filas}));
   children.push(new docx.Paragraph({text:"", spacing:{after:200}}));
 
   children.push(rfqTitulo("4. Condiciones y documentación a incluir en la oferta"));
@@ -1064,6 +1068,7 @@ async function enviarSolicitud(){
         SolicitudID: nSolicitud,
         DescripcionMaterial: m.desc,
         MedidasEspecificacion: m.medidas,
+        ProveedorFabricante: m.proveedor,
         Cantidad: m.cant ? Number(m.cant) : null,
         Unidad: m.ud,
         PEC: m.pec,
@@ -1184,6 +1189,7 @@ function buildResumenTexto(n, cab, materiales){
   materiales.forEach(function(m, i){
     l.push((i+1) + '. ' + (m.opcional?'[OPCIONAL] ':'') + m.desc + '  |  ' + m.medidas);
     l.push('   Cantidad: ' + m.cant + ' ' + m.ud + (m.pec?('   PEC: '+m.pec):''));
+    if(m.proveedor) l.push('   Proveedor/Fabricante recomendado: ' + m.proveedor);
     if(m.caract) l.push('   ' + m.caract);
     if(m.refant) l.push('   Ref. pedido anterior: ' + m.refant);
   });
