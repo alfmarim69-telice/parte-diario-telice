@@ -965,15 +965,37 @@ function generarDocumentoRFQ(cab, materiales) {
   materiales.forEach(m => {
     const linea = m.desc + (m.medidas ? " — " + m.medidas : "") + (m.proveedor ? " (ref. " + m.proveedor + ", o equivalente técnico)" : "") + (m.caract ? " (" + m.caract + ")" : "");
     children.push(rfqBullet(linea));
-    if(m.envios && m.envios.length > 1){
-      children.push(rfqBullet(`Este material se entregará en ${m.envios.length} envíos parciales, según el siguiente calendario de suministro:`, 1));
-      m.envios.forEach((e, idx) => {
-        children.push(rfqBullet(`Envío ${idx+1}: ${e.cant || "?"} ${m.ud || "uds"} — fecha de necesidad en obra: ${e.fecha ? formatearFechaISOGlobal(e.fecha) : "a confirmar"}`, 1));
-      });
-    }
   });
 
-  children.push(rfqTitulo("3. Medición prevista"));
+  children.push(rfqTitulo("3. Fechas de necesidad de entrega"));
+  children.push(rfqParrafo("A continuación se detalla, para cada material, la fecha en la que debe estar disponible en obra. Los materiales sin envíos parciales siguen la fecha de necesidad general indicada en el encabezado; los que se entregan en varios envíos tienen una fecha distinta para cada uno."));
+  const filasFechas = [ new docx.TableRow({children:[
+    rfqCelda("Material",{header:true,width:4000}), rfqCelda("Envío",{header:true,width:1800}),
+    rfqCelda("Cantidad",{header:true,width:1400}), rfqCelda("Fecha de necesidad",{header:true,width:1800})
+  ]}) ];
+  materiales.forEach(m => {
+    if(m.envios && m.envios.length > 1){
+      m.envios.forEach((e, idx) => {
+        filasFechas.push(new docx.TableRow({children:[
+          rfqCelda(idx===0 ? m.desc : "", {width:4000}),
+          rfqCelda(`Envío ${idx+1} de ${m.envios.length}`, {width:1800}),
+          rfqCelda((e.cant||"?") + " " + (m.ud||""), {width:1400}),
+          rfqCelda(e.fecha ? formatearFechaISOGlobal(e.fecha) : "a confirmar", {width:1800, bold:true, color:RFQ_AZUL})
+        ]}));
+      });
+    } else {
+      filasFechas.push(new docx.TableRow({children:[
+        rfqCelda(m.desc, {width:4000}),
+        rfqCelda("Único envío", {width:1800}),
+        rfqCelda((m.cant||"") + " " + (m.ud||""), {width:1400}),
+        rfqCelda(cab.fechaNecesidad, {width:1800, bold:true, color:RFQ_AZUL})
+      ]}));
+    }
+  });
+  children.push(new docx.Table({width:{size:9000,type:docx.WidthType.DXA}, columnWidths:[4000,1800,1400,1800], rows:filasFechas}));
+  children.push(new docx.Paragraph({text:"", spacing:{after:200}}));
+
+  children.push(rfqTitulo("4. Medición prevista"));
   const filas = [ new docx.TableRow({children:[
     rfqCelda("Descripción",{header:true,width:4500}), rfqCelda("Fabricante ref.",{header:true,width:1800}), rfqCelda("Cantidad",{header:true,width:1400}),
     rfqCelda("Ud.",{header:true,width:1300})
@@ -986,7 +1008,7 @@ function generarDocumentoRFQ(cab, materiales) {
   children.push(new docx.Table({width:{size:9000,type:docx.WidthType.DXA}, columnWidths:[4500,1800,1400,1300], rows:filas}));
   children.push(new docx.Paragraph({text:"", spacing:{after:200}}));
 
-  children.push(rfqTitulo("4. Condiciones y documentación a incluir en la oferta"));
+  children.push(rfqTitulo("5. Condiciones y documentación a incluir en la oferta"));
   const condiciones = [
     ["Precio","Precio unitario desglosado, portes y posibles suplementos."],
     ["Origen","Planta/almacén de suministro previsto y distancia/tiempo hasta obra."],
@@ -1001,18 +1023,14 @@ function generarDocumentoRFQ(cab, materiales) {
   children.push(new docx.Table({width:{size:9000,type:docx.WidthType.DXA}, columnWidths:[2200,6800], rows:filasCond}));
   children.push(new docx.Paragraph({text:"", spacing:{after:200}}));
 
-  children.push(rfqTitulo("5. Lugar y fecha de entrega"));
+  children.push(rfqTitulo("6. Lugar de entrega"));
   children.push(rfqParrafo(cab.lugarEntrega));
-  children.push(new docx.Paragraph({ spacing:{after:120}, children:[
-    new docx.TextRun({text:"Fecha de entrega necesaria en obra: ", bold:true, size:20}),
-    new docx.TextRun({text:cab.fechaNecesidad, bold:true, color:RFQ_AZUL, size:20}),
-    new docx.TextRun({text:" — el material debe estar disponible en obra en esta fecha, salvo indicación distinta acordada con el solicitante.", size:20}),
-  ]}));
+  children.push(rfqParrafo("Las fechas de necesidad de cada material se detallan en el apartado 3."));
 
-  children.push(rfqTitulo("6. Plazo y forma de presentación de ofertas"));
-  children.push(rfqParrafo(`Las ofertas deberán remitirse antes del ${cab.fechaLimite} a la dirección de contacto indicada en el encabezado, incluyendo la totalidad de los aspectos solicitados en el apartado 4. Esta fecha corresponde al plazo para presentar la oferta, y es independiente de la fecha de entrega necesaria del material indicada en el apartado 5.`));
+  children.push(rfqTitulo("7. Plazo y forma de presentación de ofertas"));
+  children.push(rfqParrafo(`Las ofertas deberán remitirse antes del ${cab.fechaLimite} a la dirección de contacto indicada en el encabezado, incluyendo la totalidad de los aspectos solicitados en el apartado 5. Esta fecha corresponde al plazo para presentar la oferta, y es independiente de las fechas de entrega necesarias del material indicadas en el apartado 3.`));
 
-  children.push(rfqTitulo("7. Observaciones"));
+  children.push(rfqTitulo("8. Observaciones"));
   children.push(rfqParrafo(cab.observaciones || "Sin observaciones adicionales."));
 
   return new docx.Document({ sections:[{ properties:{}, children }] });
