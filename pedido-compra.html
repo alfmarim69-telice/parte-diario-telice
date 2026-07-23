@@ -39,6 +39,11 @@ table.mat input[type=text],table.mat input[type=number]{width:100%;border:1px so
 table.mat input[type=number]{text-align:right;font-family:Consolas,monospace}
 table.mat tr.opcional input{font-style:italic}
 table.mat tr.opcional{background:#fff8ee}
+table.mat tr.envios-detalle td{background:#eef2fb;border-bottom:1px solid var(--border2);padding:8px 10px}
+.envios-wrap{display:flex;flex-wrap:wrap;gap:10px}
+.envio-item{display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff;border:1px solid var(--border2);border-radius:6px;padding:4px 8px}
+.envio-item input[type=number]{width:80px;border:1px solid var(--border2);border-radius:4px;padding:3px 5px;font-size:12px}
+.envio-item input[type=date]{border:1px solid var(--border2);border-radius:4px;padding:3px 5px;font-size:12px}
 .chk{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--text2)}
 .btn{border:none;border-radius:6px;padding:9px 16px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer}
 .btn.prim{background:var(--verde);color:#fff}
@@ -154,7 +159,7 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
           <input type="text" id="fFechaSolicitud" readonly>
         </div>
         <div class="field">
-          <label>Fecha de entrega *</label>
+          <label>Fecha de entrega solicitada *</label>
           <input type="date" id="fFechaEntrega">
         </div>
         <div class="field">
@@ -232,9 +237,10 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
             <th style="width:10%">Proveedor / Fabricante</th>
             <th style="width:6%">Cantidad</th>
             <th style="width:6%">Ud</th>
+            <th style="width:6%">Nº envíos</th>
             <th style="width:8%">PEC</th>
-            <th style="width:15%">Características específicas</th>
-            <th style="width:7%">Ref. pedido anterior</th>
+            <th style="width:8%">CTEplan</th>
+            <th style="width:18%">Características específicas</th>
             <th style="width:5%">Ficha técnica</th>
             <th style="width:5%">Doc. calidad</th>
             <th style="width:5%">Opcional</th>
@@ -272,10 +278,6 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
         <div class="field">
           <label>Plazo de entrega</label>
           <input type="date" id="fPlazo">
-        </div>
-        <div class="field">
-          <label>Número de envíos</label>
-          <input type="text" id="fNumEnvios" value="UNICO">
         </div>
         <div class="field">
           <label>Adjuntar documento (p.ej. especificación técnica)</label>
@@ -363,10 +365,10 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
 /* ════════════════════ CONFIG / MSAL / SP REST (propio, no toca sp-integracion.js) ════════════════════ */
 var CFG = null, MSAL = null;
 
-var ESTADOS = ['Enviado','En revision de compras','Enviado a proveedores','Recibidas ofertas',
+var ESTADOS = ['Enviada solicitud a compras','En revision de compras','Enviada solicitud a proveedores','Recibidas ofertas',
                'En proceso de comparativo','En firmas de aprobacion','Aprobado','Hecho el pedido'];
 var ESTADO_COLOR = {
-  'Enviado':'#8a97ab', 'En revision de compras':'#5b7fb5', 'Enviado a proveedores':'#3d6bb0',
+  'Enviada solicitud a compras':'#8a97ab', 'En revision de compras':'#5b7fb5', 'Enviada solicitud a proveedores':'#3d6bb0',
   'Recibidas ofertas':'#C55A11', 'En proceso de comparativo':'#b9691a', 'En firmas de aprobacion':'#b8860b',
   'Aprobado':'#6a9c3f', 'Hecho el pedido':'#548235'
 };
@@ -734,14 +736,67 @@ function addFilaMat(){
     '<td><input type="text" data-f="proveedor"></td>' +
     '<td><input type="number" data-f="cant" min="0" step="0.01"></td>' +
     '<td><input type="text" data-f="ud"></td>' +
+    '<td><input type="number" data-f="nenvios" min="1" step="1" value="1" style="width:52px" onchange="renderEnvios('+matSeq+')"></td>' +
     '<td><input type="text" data-f="pec"></td>' +
+    '<td><input type="text" data-f="cteplan"></td>' +
     '<td><input type="text" data-f="caract"></td>' +
-    '<td><input type="text" data-f="refant"></td>' +
     '<td><div class="chk"><input type="checkbox" data-f="ficha"></div></td>' +
     '<td><div class="chk"><input type="checkbox" data-f="calidad"></div></td>' +
     '<td><div class="chk"><input type="checkbox" data-f="opcional" onchange="toggleOpcional('+matSeq+')"></div></td>' +
-    '<td><button class="btn del" onclick="document.getElementById(\'matrow-'+matSeq+'\').remove()">✕</button></td>';
+    '<td><button class="btn del" onclick="eliminarFilaMat('+matSeq+')">✕</button></td>';
   document.getElementById('filasMat').appendChild(tr);
+}
+var MAT_COLSPAN = 13;
+function eliminarFilaMat(id){
+  document.getElementById('matrow-'+id).remove();
+  var er = document.getElementById('enviosrow-'+id);
+  if(er) er.remove();
+}
+// Guarda, por cada fila de material, el detalle de envíos ya introducido (unidades + fecha de necesidad),
+// para no perderlo si el usuario reduce y luego vuelve a aumentar el número de envíos.
+var ENVIOS_MATERIAL = {};
+function renderEnvios(id){
+  var trMat = document.getElementById('matrow-'+id);
+  if(!trMat) return;
+  var n = parseInt(trMat.querySelector('[data-f="nenvios"]').value, 10) || 1;
+  var existente = ENVIOS_MATERIAL[id] || [];
+  var er = document.getElementById('enviosrow-'+id);
+  if(n <= 1){
+    if(er) er.remove();
+    return;
+  }
+  if(!er){
+    er = document.createElement('tr');
+    er.id = 'enviosrow-'+id;
+    er.className = 'envios-detalle';
+    trMat.parentNode.insertBefore(er, trMat.nextSibling);
+  }
+  var celdas = '';
+  for(var i=0;i<n;i++){
+    var val = existente[i] || {cant:'', fecha:''};
+    celdas +=
+      '<span class="envio-item">' +
+        '<b>Envío '+(i+1)+':</b> ' +
+        '<input type="number" min="0" step="0.01" placeholder="Unidades" data-envio-cant="'+i+'" value="'+(val.cant||'')+'" style="width:80px">' +
+        ' uds — Fecha de necesidad ' +
+        '<input type="date" data-envio-fecha="'+i+'" value="'+(val.fecha||'')+'">' +
+      '</span>';
+  }
+  er.innerHTML = '<td colspan="'+MAT_COLSPAN+'"><div class="envios-wrap">'+celdas+'</div></td>';
+}
+function leerEnviosFila(id){
+  var er = document.getElementById('enviosrow-'+id);
+  var trMat = document.getElementById('matrow-'+id);
+  var n = trMat ? (parseInt(trMat.querySelector('[data-f="nenvios"]').value,10)||1) : 1;
+  if(n<=1 || !er) { ENVIOS_MATERIAL[id]=[]; return []; }
+  var out = [];
+  for(var i=0;i<n;i++){
+    var cInput = er.querySelector('[data-envio-cant="'+i+'"]');
+    var fInput = er.querySelector('[data-envio-fecha="'+i+'"]');
+    out.push({ cant: cInput?cInput.value.trim():'', fecha: fInput?fInput.value:'' });
+  }
+  ENVIOS_MATERIAL[id] = out;
+  return out;
 }
 function toggleOpcional(id){
   var tr = document.getElementById('matrow-'+id);
@@ -753,8 +808,11 @@ function leerMateriales(){
   document.querySelectorAll('#filasMat tr').forEach(function(tr){
     function v(f){ var el = tr.querySelector('[data-f="'+f+'"]'); return el ? (el.type==='checkbox'?el.checked:el.value.trim()) : ''; }
     if(!v('desc') && !v('cant')) return;
-    out.push({ desc:v('desc'), medidas:v('medidas'), proveedor:v('proveedor'), cant:v('cant'), ud:v('ud'), pec:v('pec'),
-               caract:v('caract'), refant:v('refant'), ficha:v('ficha'), calidad:v('calidad'), opcional:v('opcional') });
+    var idMat = tr.id.replace('matrow-','');
+    var nEnvios = parseInt(v('nenvios'),10) || 1;
+    var envios = nEnvios>1 ? leerEnviosFila(idMat) : [];
+    out.push({ desc:v('desc'), medidas:v('medidas'), proveedor:v('proveedor'), cant:v('cant'), ud:v('ud'), pec:v('pec'), cteplan:v('cteplan'),
+               caract:v('caract'), ficha:v('ficha'), calidad:v('calidad'), opcional:v('opcional'), nEnvios:nEnvios, envios:envios });
   });
   return out;
 }
@@ -771,8 +829,8 @@ var MAT_SINONIMOS = {
   cant:      ['cantidad','cant','uds','unidades','cantidadsolicitada','ctd'],
   ud:        ['ud','unidad','unidaddemedida','um'],
   pec:       ['pec','precio','preciounitario','importe'],
-  caract:    ['caracteristicasespecificas','caracteristicas','observaciones','notas','detalle'],
-  refant:    ['refpedidoanterior','referenciaanterior','refanterior','pedidoanterior','referencia','ref']
+  cteplan:   ['cteplan','costeplanificado','coste','costeplan','costeunitario'],
+  caract:    ['caracteristicasespecificas','caracteristicas','observaciones','notas','detalle']
 };
 function normalizarTexto(s){
   return String(s||'').toLowerCase()
@@ -835,8 +893,8 @@ function importarMaterialesExcel(input){
         tr.querySelector('[data-f="cant"]').value = val('cant');
         tr.querySelector('[data-f="ud"]').value = val('ud');
         tr.querySelector('[data-f="pec"]').value = val('pec');
+        tr.querySelector('[data-f="cteplan"]').value = val('cteplan');
         tr.querySelector('[data-f="caract"]').value = val('caract');
-        tr.querySelector('[data-f="refant"]').value = val('refant');
         importadas++;
       });
 
@@ -879,8 +937,8 @@ function rfqTitulo(texto) {
 function rfqParrafo(texto) {
   return new docx.Paragraph({ spacing:{after:120}, children:[new docx.TextRun({text:texto, size:20})] });
 }
-function rfqBullet(texto) {
-  return new docx.Paragraph({ bullet:{level:0}, spacing:{after:60}, children:[new docx.TextRun({text:texto, size:20})] });
+function rfqBullet(texto, nivel) {
+  return new docx.Paragraph({ bullet:{level:nivel||0}, spacing:{after:60}, children:[new docx.TextRun({text:texto, size:20, italics:!!nivel})] });
 }
 
 function generarDocumentoRFQ(cab, materiales) {
@@ -907,19 +965,25 @@ function generarDocumentoRFQ(cab, materiales) {
   materiales.forEach(m => {
     const linea = m.desc + (m.medidas ? " — " + m.medidas : "") + (m.proveedor ? " (ref. " + m.proveedor + ", o equivalente técnico)" : "") + (m.caract ? " (" + m.caract + ")" : "");
     children.push(rfqBullet(linea));
+    if(m.envios && m.envios.length > 1){
+      children.push(rfqBullet(`Este material se entregará en ${m.envios.length} envíos parciales, según el siguiente calendario de suministro:`, 1));
+      m.envios.forEach((e, idx) => {
+        children.push(rfqBullet(`Envío ${idx+1}: ${e.cant || "?"} ${m.ud || "uds"} — fecha de necesidad en obra: ${e.fecha ? formatearFechaISOGlobal(e.fecha) : "a confirmar"}`, 1));
+      });
+    }
   });
 
   children.push(rfqTitulo("3. Medición prevista"));
   const filas = [ new docx.TableRow({children:[
-    rfqCelda("Descripción",{header:true,width:3600}), rfqCelda("Fabricante ref.",{header:true,width:1600}), rfqCelda("Cantidad",{header:true,width:1200}),
-    rfqCelda("Ud.",{header:true,width:900}), rfqCelda("Observaciones",{header:true,width:1700})
+    rfqCelda("Descripción",{header:true,width:4500}), rfqCelda("Fabricante ref.",{header:true,width:1800}), rfqCelda("Cantidad",{header:true,width:1400}),
+    rfqCelda("Ud.",{header:true,width:1300})
   ]}) ];
   materiales.forEach(m => {
     filas.push(new docx.TableRow({children:[
-      rfqCelda(m.desc,{width:3600}), rfqCelda(m.proveedor||"",{width:1600}), rfqCelda(m.cant,{width:1200}), rfqCelda(m.ud,{width:900}), rfqCelda(m.refant||"",{width:1700})
+      rfqCelda(m.desc,{width:4500}), rfqCelda(m.proveedor||"",{width:1800}), rfqCelda(m.cant,{width:1400}), rfqCelda(m.ud,{width:1300})
     ]}));
   });
-  children.push(new docx.Table({width:{size:9000,type:docx.WidthType.DXA}, columnWidths:[3600,1600,1200,900,1700], rows:filas}));
+  children.push(new docx.Table({width:{size:9000,type:docx.WidthType.DXA}, columnWidths:[4500,1800,1400,1300], rows:filas}));
   children.push(new docx.Paragraph({text:"", spacing:{after:200}}));
 
   children.push(rfqTitulo("4. Condiciones y documentación a incluir en la oferta"));
@@ -973,6 +1037,11 @@ function showBanner(tipo, msg){
   b.textContent = msg;
 }
 function pad4(n){ return String(n).padStart(4,'0'); }
+function formatearFechaISOGlobal(iso){
+  if(!iso) return iso;
+  var partes = iso.split('-');
+  return partes.length===3 ? (partes[2] + '/' + partes[1] + '/' + partes[0]) : iso;
+}
 
 async function generarNumSolicitud(){
   var anio = new Date().getFullYear();
@@ -1047,9 +1116,8 @@ async function enviarSolicitud(){
       DireccionEntrega: document.getElementById('fDireccion').value.trim(),
       PersonaContacto: document.getElementById('fContacto').value.trim(),
       Horario: document.getElementById('fHorario').value.trim(),
-      NumeroEnvios: document.getElementById('fNumEnvios').value.trim(),
       PlazoEntrega: document.getElementById('fPlazo').value || fechaEntrega,
-      Estado: 'Enviado',
+      Estado: 'Enviada solicitud a compras',
       UrlCarpeta: folderWebUrl,
       CorreoJefeArea: (function(){
         if(!jefeObra.ResponsableArea || jefeObra.ResponsableArea===solicitante) return '';
@@ -1061,6 +1129,10 @@ async function enviarSolicitud(){
     });
 
     // 3) Líneas de material
+    function textoEnvios(m){
+      if(!m.envios || m.envios.length<=1) return '';
+      return m.envios.map(function(e,i){ return (i+1)+') '+(e.cant||'?')+' uds — necesario antes del '+(e.fecha?formatearFechaISOGlobal(e.fecha):'?'); }).join('\n');
+    }
     for(var i=0;i<materiales.length;i++){
       var m = materiales[i];
       await spPost('PedidosCompraLineas', {
@@ -1072,10 +1144,11 @@ async function enviarSolicitud(){
         Cantidad: m.cant ? Number(m.cant) : null,
         Unidad: m.ud,
         PEC: m.pec,
+        CTEplan: m.cteplan,
         CaracteristicasEspecificas: (m.opcional?'[OPCIONAL] ':'') + m.caract,
-        RefPedidoAnterior: m.refant,
         FichaTecnica: !!m.ficha,
-        DocumentacionCalidad: !!m.calidad
+        DocumentacionCalidad: !!m.calidad,
+        DetalleEnvios: textoEnvios(m)
       });
     }
 
@@ -1101,11 +1174,6 @@ async function enviarSolicitud(){
           var mm = String(d.getMonth()+1).padStart(2,'0');
           return dd + '/' + mm + '/' + d.getFullYear();
         };
-        var formatearFechaISO = function(iso){
-          if(!iso) return iso;
-          var partes = iso.split('-');
-          return partes.length===3 ? (partes[2] + '/' + partes[1] + '/' + partes[0]) : iso;
-        };
         var cabRfq = {
           tituloRfq: 'Suministro — ' + obra,
           proyecto: obra,
@@ -1117,7 +1185,7 @@ async function enviarSolicitud(){
           objeto: 'Se solicita oferta económica y técnica para el suministro de los materiales/servicios detallados a continuación, con destino a la obra ' + obra + '.',
           lugarEntrega: (document.getElementById('fDireccion').value.trim() || ('Obra ' + obra)) +
             (document.getElementById('fContacto').value.trim() ? ' · Contacto en obra: ' + document.getElementById('fContacto').value.trim() : ''),
-          fechaNecesidad: formatearFechaISO(fechaEntrega),
+          fechaNecesidad: formatearFechaISOGlobal(fechaEntrega),
           fechaLimite: hoyMasDias(10),
           observaciones: document.getElementById('fObservaciones').value.trim()
         };
@@ -1188,10 +1256,15 @@ function buildResumenTexto(n, cab, materiales){
   l.push('-'.repeat(50));
   materiales.forEach(function(m, i){
     l.push((i+1) + '. ' + (m.opcional?'[OPCIONAL] ':'') + m.desc + '  |  ' + m.medidas);
-    l.push('   Cantidad: ' + m.cant + ' ' + m.ud + (m.pec?('   PEC: '+m.pec):''));
+    l.push('   Cantidad: ' + m.cant + ' ' + m.ud + (m.pec?('   PEC: '+m.pec):'') + (m.cteplan?('   CTEplan: '+m.cteplan):''));
     if(m.proveedor) l.push('   Proveedor/Fabricante recomendado: ' + m.proveedor);
     if(m.caract) l.push('   ' + m.caract);
-    if(m.refant) l.push('   Ref. pedido anterior: ' + m.refant);
+    if(m.envios && m.envios.length > 1){
+      l.push('   Envíos parciales (' + m.envios.length + '):');
+      m.envios.forEach(function(e, idx){
+        l.push('     ' + (idx+1) + ') ' + (e.cant||'?') + ' ' + (m.ud||'uds') + ' — necesario antes del ' + (e.fecha?formatearFechaISOGlobal(e.fecha):'a confirmar'));
+      });
+    }
   });
   return l.join('\n');
 }
