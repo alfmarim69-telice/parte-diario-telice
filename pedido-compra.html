@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pedido de Compra · Telice</title>
+<title>Solicitud de Aprovisionamiento · Telice</title>
 <style>
 :root{
   --azul:#1F3864; --azul2:#2d4a7c; --verde:#548235; --naranja:#C55A11; --rojo:#c0392b;
@@ -103,7 +103,7 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
 <div id="loginOverlay">
   <div class="login-card">
     <div class="login-head">
-      <div class="logo">Pedido de Compra</div>
+      <div class="logo">Solicitud de Aprovisionamiento</div>
       <div class="sub2">TELICE · Acceso de usuario</div>
     </div>
     <div class="login-body">
@@ -126,7 +126,7 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
 
 <header>
   <div>
-    <h1>Pedido de Compra</h1>
+    <h1>Solicitud de Aprovisionamiento</h1>
     <div class="sub">TELICE · <span id="estadoConn" class="estado-conn">Conectando…</span></div>
   </div>
   <div class="tabs">
@@ -210,7 +210,7 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
           <input type="text" id="fAlmacen">
         </div>
         <div class="field">
-          <label>Jefe de área</label>
+          <label>Responsable de área</label>
           <input type="text" id="fJefeArea" readonly placeholder="Autocompletado">
         </div>
       </div>
@@ -238,8 +238,8 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
             <th style="width:6%">Cantidad</th>
             <th style="width:6%">Ud</th>
             <th style="width:6%">Nº envíos</th>
-            <th style="width:8%">PEC</th>
-            <th style="width:8%">CTEplan</th>
+            <th style="width:8%">Precio Venta</th>
+            <th style="width:8%">Precio Coste</th>
             <th style="width:18%">Características específicas</th>
             <th style="width:5%">Ficha técnica</th>
             <th style="width:5%">Doc. calidad</th>
@@ -268,6 +268,10 @@ table.segui select.estado-sel{font-size:11px;padding:5px 6px;border-radius:5px;b
         <div class="field">
           <label>Persona de contacto</label>
           <input type="text" id="fContacto">
+        </div>
+        <div class="field">
+          <label>Teléfono de contacto</label>
+          <input type="tel" id="fTelefonoContacto">
         </div>
         <div class="field">
           <label>Horario</label>
@@ -828,8 +832,8 @@ var MAT_SINONIMOS = {
   proveedor: ['proveedor','fabricante','proveedorfabricante','marca','proveedorrecomendado','fabricanterecomendado'],
   cant:      ['cantidad','cant','uds','unidades','cantidadsolicitada','ctd'],
   ud:        ['ud','unidad','unidaddemedida','um'],
-  pec:       ['pec','precio','preciounitario','importe'],
-  cteplan:   ['cteplan','costeplanificado','coste','costeplan','costeunitario'],
+  pec:       ['pec','precio','preciounitario','importe','precioventa'],
+  cteplan:   ['cteplan','costeplanificado','coste','costeplan','costeunitario','preciocoste'],
   caract:    ['caracteristicasespecificas','caracteristicas','observaciones','notas','detalle']
 };
 function normalizarTexto(s){
@@ -1133,6 +1137,7 @@ async function enviarSolicitud(){
       JefeArea: jefeObra.ResponsableArea || '',
       DireccionEntrega: document.getElementById('fDireccion').value.trim(),
       PersonaContacto: document.getElementById('fContacto').value.trim(),
+      TelefonoContacto: document.getElementById('fTelefonoContacto').value.trim(),
       Horario: document.getElementById('fHorario').value.trim(),
       PlazoEntrega: document.getElementById('fPlazo').value || fechaEntrega,
       Estado: 'Enviada solicitud a compras',
@@ -1202,7 +1207,8 @@ async function enviarSolicitud(){
           plazoOferta: '10 días naturales desde la recepción',
           objeto: 'Se solicita oferta económica y técnica para el suministro de los materiales/servicios detallados a continuación, con destino a la obra ' + obra + '.',
           lugarEntrega: (document.getElementById('fDireccion').value.trim() || ('Obra ' + obra)) +
-            (document.getElementById('fContacto').value.trim() ? ' · Contacto en obra: ' + document.getElementById('fContacto').value.trim() : ''),
+            (document.getElementById('fContacto').value.trim() ? ' · Contacto en obra: ' + document.getElementById('fContacto').value.trim() : '') +
+            (document.getElementById('fTelefonoContacto').value.trim() ? ' · Tel.: ' + document.getElementById('fTelefonoContacto').value.trim() : ''),
           fechaNecesidad: formatearFechaISOGlobal(fechaEntrega),
           fechaLimite: hoyMasDias(10),
           observaciones: document.getElementById('fObservaciones').value.trim()
@@ -1264,7 +1270,7 @@ function buildResumenTexto(n, cab, materiales){
   l.push('='.repeat(50));
   l.push('Departamento: ' + cab.dep);
   l.push('Obra: ' + cab.obra);
-  l.push('Jefe de obra: ' + cab.jefeObra + '   Jefe de área: ' + (cab.jefeArea||''));
+  l.push('Jefe de obra: ' + cab.jefeObra + '   Responsable de área: ' + (cab.jefeArea||''));
   l.push('Solicitante: ' + cab.solicitante);
   l.push('Fecha solicitud: ' + cab.fechaSolicitud + '   Fecha entrega: ' + cab.fechaEntrega);
   l.push('Prioridad: ' + cab.prioridad);
@@ -1274,7 +1280,7 @@ function buildResumenTexto(n, cab, materiales){
   l.push('-'.repeat(50));
   materiales.forEach(function(m, i){
     l.push((i+1) + '. ' + (m.opcional?'[OPCIONAL] ':'') + m.desc + '  |  ' + m.medidas);
-    l.push('   Cantidad: ' + m.cant + ' ' + m.ud + (m.pec?('   PEC: '+m.pec):'') + (m.cteplan?('   CTEplan: '+m.cteplan):''));
+    l.push('   Cantidad: ' + m.cant + ' ' + m.ud + (m.pec?('   Precio Venta: '+m.pec):'') + (m.cteplan?('   Precio Coste: '+m.cteplan):''));
     if(m.proveedor) l.push('   Proveedor/Fabricante recomendado: ' + m.proveedor);
     if(m.caract) l.push('   ' + m.caract);
     if(m.envios && m.envios.length > 1){
